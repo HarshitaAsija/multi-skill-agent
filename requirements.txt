@@ -1,0 +1,6 @@
+# Runtime dependencies (no pretrained models, no heavy packages)
+# All dependencies are lightweight and stay well within the 50MB submission constraint.
+beautifulsoup4>=4.12.0
+
+# Development / testing only (not required at runtime)
+# Install with: pip install -r requirements-dev.txt
