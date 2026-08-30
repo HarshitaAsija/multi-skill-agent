@@ -1,0 +1,33 @@
+{
+  "name": "agent-skill-marketplace",
+  "version": "1.0.0",
+  "description": "Agent Skill Marketplace for AI Discoverability, Machine Readiness, Factual Freshness, and On-site Engagement Auditing.",
+  "author": "Adobe University Hackathon 2026 Team",
+  "entrypoint": "audit-orchestrator",
+  "skills": [
+    {
+      "name": "audit-orchestrator",
+      "path": "skills/audit-orchestrator/SKILL.md",
+      "description": "Sole designated entrypoint that coordinates audit requests, executes specialist skills, deduplicates findings, calibrates severity, and compiles the final structured audit report.",
+      "is_entrypoint": true
+    },
+    {
+      "name": "crawl-render-audit",
+      "path": "skills/crawl-render-audit/SKILL.md",
+      "description": "Audits HTTP accessibility, robots.txt, sitemaps, crawlability, raw server HTML vs rendered DOM content deltas, and machine-readable metadata.",
+      "is_entrypoint": false
+    },
+    {
+      "name": "freshness-corroboration",
+      "path": "skills/freshness-corroboration/SKILL.md",
+      "description": "Audits temporal freshness signals, copyright recency, factual consistency across pages, and entity identity statements.",
+      "is_entrypoint": false
+    },
+    {
+      "name": "engagement-audit",
+      "path": "skills/engagement-audit/SKILL.md",
+      "description": "Audits on-site human/agent engagement factors: above-the-fold value proposition clarity, navigation hierarchy, subpage context retention, and CTA discoverability.",
+      "is_entrypoint": false
+    }
+  ]
+}
