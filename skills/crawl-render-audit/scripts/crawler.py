@@ -1,78 +1,116 @@
 """
-Bounded BFS Crawl Queue and Crawler.
+Bounded BFS Crawl Queue and Representative Template Sampler.
 
-Implements a priority-ordered BFS URL queue that:
-  - Respects a max page and max depth limit
-  - Deduplicates URLs before and after fetching
-  - Respects robots.txt allow/disallow for the audit user-agent
-  - Applies polite per-host delays
-  - Prioritises important pages (root, navigation links, key paths)
-  - Returns a list of (url, depth, HTTPResponse) tuples
-
-Design principles:
-  - No hardcoded domain knowledge or CMS selectors
-  - Priority based on URL depth and detected navigation importance
-  - Graceful: logs and skips failed pages rather than crashing
+Implements a priority-ordered, template-aware URL queue that:
+  - Samples representatively across key template types (Homepage, About/Company, Product/Pricing, Docs/API, Blog/Content)
+  - Respects max page and max depth limits
+  - Deduplicates URLs deterministically before fetching
+  - Respects robots.txt directives for AI crawler User-Agents
+  - Enforces polite per-host delays
+  - Returns a list of CrawledPage objects containing HTTP responses
 """
 
 import time
 import heapq
-from typing import List, Tuple, Optional, Dict, Set
+from typing import List, Tuple, Optional, Dict, Set, Any
 from urllib.parse import urlparse
 
 from shared.http_client import SafeHTTPClient, HTTPResponse
 from shared.url_utils import normalize_url, is_valid_url, is_same_domain, URLDeduplicator
 from shared.logging_utils import get_logger
-from skills.crawl_render_audit.scripts.robots_parser import RobotsParseResult
+from .robots_parser import RobotsParseResult
 
 logger = get_logger("crawler")
-
-# Paths that typically indicate high-value pages for AI discoverability and engagement audits
-_HIGH_VALUE_PATH_SIGNALS = [
-    "/about", "/company", "/team", "/mission",
-    "/pricing", "/plans", "/features", "/product",
-    "/contact", "/support",
-    "/blog", "/news", "/articles",
-    "/docs", "/documentation", "/api",
-    "/privacy", "/terms",
-]
 
 # Content-type prefixes we want to crawl (HTML pages only)
 _CRAWLABLE_CONTENT_TYPES = ["text/html", "application/xhtml+xml"]
 
+# Template Bucket Categories for Representative Sampling
+TEMPLATE_HOMEPAGE = "homepage"
+TEMPLATE_ABOUT_COMPANY = "about_company"
+TEMPLATE_PRODUCT_PRICING = "product_pricing"
+TEMPLATE_DOCS_API = "docs_api"
+TEMPLATE_BLOG_CONTENT = "blog_content"
+TEMPLATE_GENERIC = "generic"
+
+_TEMPLATE_PATH_MAP = {
+    TEMPLATE_ABOUT_COMPANY: ["/about", "/company", "/team", "/contact", "/support", "/mission"],
+    TEMPLATE_PRODUCT_PRICING: ["/pricing", "/plans", "/features", "/product", "/services", "/solutions"],
+    TEMPLATE_DOCS_API: ["/docs", "/documentation", "/api", "/guide", "/help", "/developers"],
+    TEMPLATE_BLOG_CONTENT: ["/blog", "/news", "/articles", "/posts", "/changelog", "/insights"],
+}
+
+# Max pages to sample per template category (prevents 15 blog posts from eating crawl budget)
+MAX_PAGES_PER_TEMPLATE = {
+    TEMPLATE_HOMEPAGE: 1,
+    TEMPLATE_ABOUT_COMPANY: 3,
+    TEMPLATE_PRODUCT_PRICING: 4,
+    TEMPLATE_DOCS_API: 4,
+    TEMPLATE_BLOG_CONTENT: 3,
+    TEMPLATE_GENERIC: 5,
+}
+
+
+def classify_template_bucket(url: str, root_url: str) -> str:
+    """Classifies a URL into a representative template bucket based on path patterns."""
+    parsed_root = urlparse(root_url)
+    parsed_url = urlparse(url)
+
+    # Root or homepage path
+    if parsed_url.path.rstrip("/") == parsed_root.path.rstrip("/"):
+        return TEMPLATE_HOMEPAGE
+
+    path = parsed_url.path.lower()
+    for bucket, patterns in _TEMPLATE_PATH_MAP.items():
+        for pattern in patterns:
+            if path == pattern or path.startswith(pattern + "/"):
+                return bucket
+
+    return TEMPLATE_GENERIC
+
+
+def _url_priority(url: str, depth: int, template_bucket: str) -> int:
+    """
+    Priority calculation for min-heap queue:
+    Lower number = higher priority.
+    - Homepage = 0
+    - Distinct key template buckets = 1..2
+    - Generic pages scale with depth
+    """
+    if template_bucket == TEMPLATE_HOMEPAGE:
+        return 0
+    if template_bucket in (TEMPLATE_PRODUCT_PRICING, TEMPLATE_ABOUT_COMPANY, TEMPLATE_DOCS_API):
+        return 1 + depth
+    if template_bucket == TEMPLATE_BLOG_CONTENT:
+        return 2 + depth
+
+    # Generic path priority scales with URL depth and segment length
+    path_segments = [s for s in urlparse(url).path.split("/") if s]
+    return 3 + depth + len(path_segments)
+
 
 class CrawledPage:
-    """Represents a successfully fetched and queued page."""
-    def __init__(self, url: str, depth: int, response: HTTPResponse):
+    """Represents a successfully fetched page in the crawl graph."""
+    def __init__(self, url: str, depth: int, response: HTTPResponse, template_bucket: str):
         self.url = url
         self.depth = depth
         self.response = response
+        self.template_bucket = template_bucket
 
-
-def _url_priority(url: str, depth: int) -> int:
-    """
-    Lower number = higher priority in the min-heap.
-    Root page gets 0. Navigation paths get 1. Others scale with depth.
-    This is CMS-agnostic — purely based on URL structure signals.
-    """
-    if depth == 0:
-        return 0
-
-    path = urlparse(url).path.rstrip("/").lower()
-
-    for signal in _HIGH_VALUE_PATH_SIGNALS:
-        if path == signal or path.startswith(signal + "/"):
-            return depth  # Same depth but prioritized over generic pages
-
-    # Penalize very deep or parameter-heavy URLs slightly
-    segment_count = len([s for s in path.split("/") if s])
-    return depth + segment_count
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "url": self.url,
+            "depth": self.depth,
+            "template_bucket": self.template_bucket,
+            "status_code": self.response.status_code,
+            "elapsed_seconds": self.response.elapsed_seconds,
+        }
 
 
 class BoundedCrawler:
     """
-    Bounded BFS crawler. Crawls up to max_pages total pages up to max_depth hops
-    from the root URL, respecting robots.txt and applying polite delays.
+    Bounded BFS crawler with representative template sampling.
+    Crawls up to max_pages total pages up to max_depth hops while enforcing polite host delays.
     """
 
     def __init__(
@@ -80,7 +118,7 @@ class BoundedCrawler:
         http_client: Optional[SafeHTTPClient] = None,
         max_pages: int = 15,
         max_depth: int = 2,
-        per_host_delay: float = 0.5,  # seconds between requests to same host
+        per_host_delay: float = 0.2,  # Polite delay in seconds
     ):
         self.http_client = http_client or SafeHTTPClient()
         self.max_pages = max_pages
@@ -94,24 +132,18 @@ class BoundedCrawler:
         seed_urls: Optional[List[str]] = None,
     ) -> List[CrawledPage]:
         """
-        Executes a bounded BFS crawl starting from root_url.
-
-        Args:
-            root_url:   The canonical starting URL.
-            robots:     Parsed robots.txt (if None, assume allow-all).
-            seed_urls:  High-priority URLs to pre-populate queue (e.g. from sitemap).
-
-        Returns:
-            List of CrawledPage objects for all successfully fetched pages.
+        Executes bounded, representative template crawl.
         """
         root_url = normalize_url(root_url)
         dedup = URLDeduplicator()
         crawled: List[CrawledPage] = []
         host_last_request: Dict[str, float] = {}
 
-        # Priority queue entries: (priority_int, counter, url, depth)
-        # Counter breaks ties deterministically (FIFO within same priority)
-        queue: List[Tuple[int, int, str, int]] = []
+        # Bucket counters to ensure balanced sampling across site template types
+        bucket_counts: Dict[str, int] = {k: 0 for k in MAX_PAGES_PER_TEMPLATE.keys()}
+
+        # Queue entry format: (priority_int, counter, url, depth, template_bucket)
+        queue: List[Tuple[int, int, str, int, str]] = []
         counter = 0
 
         def enqueue(url: str, depth: int) -> None:
@@ -122,74 +154,78 @@ class BoundedCrawler:
                 return
             if not dedup.add(url):
                 return
-            # Check robots.txt
+
+            bucket = classify_template_bucket(url, root_url)
+            cap = MAX_PAGES_PER_TEMPLATE.get(bucket, 5)
+            if bucket_counts[bucket] >= cap and bucket != TEMPLATE_HOMEPAGE:
+                logger.debug(f"Bucket cap reached for {bucket}, skipping {url}")
+                return
+
+            # Check robots.txt directives
             path = urlparse(url).path or "/"
             if robots and not robots.is_path_allowed(path):
-                logger.debug(f"robots.txt disallows {url}, skipping")
+                logger.debug(f"robots.txt disallows {url}, skipping enqueue")
                 return
-            prio = _url_priority(url, depth)
-            heapq.heappush(queue, (prio, counter, url, depth))
+
+            prio = _url_priority(url, depth, bucket)
+            heapq.heappush(queue, (prio, counter, url, depth, bucket))
             counter += 1
 
-        # Seed the queue with root URL
+        # Seed queue with root URL
         enqueue(root_url, depth=0)
 
-        # Pre-populate with high-value sitemap/seed URLs at depth 1
+        # Pre-populate with high-value sitemap URLs at depth 1
         for seed in (seed_urls or []):
             enqueue(seed, depth=1)
 
         while queue and len(crawled) < self.max_pages:
-            prio, _, url, depth = heapq.heappop(queue)
+            prio, _, url, depth, bucket = heapq.heappop(queue)
 
             if depth > self.max_depth:
                 continue
 
-            # Polite per-host delay
+            # Polite host rate limiting
             host = urlparse(url).netloc
             last = host_last_request.get(host, 0.0)
             elapsed = time.time() - last
             if elapsed < self.per_host_delay:
                 time.sleep(self.per_host_delay - elapsed)
 
-            logger.info(f"[depth={depth}] Fetching: {url}")
+            logger.info(f"[depth={depth}][{bucket}] Fetching: {url}")
             resp = self.http_client.fetch(url)
             host_last_request[host] = time.time()
 
             if not resp.is_success:
-                logger.warning(f"  HTTP {resp.status_code} for {url}: {resp.error}")
+                logger.warning(f"  HTTP {resp.status_code} for {url}: {resp.error or 'Failed'}")
                 continue
 
-            # Skip non-HTML responses
+            # Filter non-HTML content
             ct = (resp.content_type or "").lower()
             if not any(ct.startswith(t) for t in _CRAWLABLE_CONTENT_TYPES):
                 logger.debug(f"  Skipping non-HTML content-type '{ct}' at {url}")
                 continue
 
-            crawled.append(CrawledPage(url=url, depth=depth, response=resp))
+            bucket_counts[bucket] += 1
+            crawled.append(CrawledPage(url=url, depth=depth, response=resp, template_bucket=bucket))
             logger.info(f"  Crawled ({len(crawled)}/{self.max_pages}): {url}")
 
-            # Only discover new links from HTML pages within depth limit
+            # Extract internal links for next hop if depth limit allows
             if depth < self.max_depth and resp.body:
                 discovered = self._extract_links_fast(resp.body, url)
                 for link in discovered:
                     enqueue(link, depth + 1)
 
-        logger.info(f"Crawl complete: {len(crawled)} pages fetched")
+        logger.info(f"Crawl complete. Sampled {len(crawled)} pages across buckets: {bucket_counts}")
         return crawled
 
     def _extract_links_fast(self, html: str, base_url: str) -> List[str]:
-        """
-        Fast regex-based link extractor for the crawler loop.
-        Full semantic extraction is done by PageAnalyser separately.
-        This avoids importing BeautifulSoup inside the tight crawl loop.
-        """
+        """Fast regex link extraction for crawler queue population."""
         import re
         links: List[str] = []
-        # Match href="..." and href='...' in <a> tags
         pattern = re.compile(r'<a\b[^>]+\bhref=["\']([^"\'#][^"\']*)["\']', re.IGNORECASE)
         for match in pattern.finditer(html):
             raw = match.group(1).strip()
-            if not raw or raw.startswith(("javascript:", "mailto:", "tel:", "data:")):
+            if not raw or raw.startswith(("javascript:", "mailto:", "tel:", "data:", "#")):
                 continue
             from shared.url_utils import resolve_relative_url
             resolved = resolve_relative_url(base_url, raw)
