@@ -48,8 +48,19 @@ pip install -r requirements.txt
 
 ### Run Audit CLI
 ```bash
+# Basic audit (JSON to stdout)
 python run_audit.py --url https://example.com
+
+# Comprehensive audit with custom limits and file output
+python run_audit.py --url https://example.com --max-pages 20 --max-depth 3 --timeout 10.0 --output report.json
 ```
+
+CLI Options:
+- `--url`, `-u`: Target website URL to audit (required, e.g., `https://example.com`)
+- `--max-pages`, `-p`: Maximum pages to crawl across template buckets (default: 15)
+- `--max-depth`, `-d`: Maximum crawl link depth (default: 2)
+- `--timeout`, `-t`: Per-request HTTP timeout in seconds (default: 10.0)
+- `--output`, `-o`: Optional file path to write the formatted JSON report
 
 ### Run Audit Programmatically
 ```python
@@ -58,7 +69,7 @@ from skills import load_skill_module
 orch_mod = load_skill_module("audit-orchestrator", "orchestrate.py")
 orchestrator = orch_mod.Orchestrator()
 
-result = orchestrator.run_audit("https://example.com", max_pages=15)
+result = orchestrator.run_audit("https://example.com", max_pages=15, max_depth=2)
 print(result)
 ```
 
@@ -67,8 +78,28 @@ print(result)
 ## Running Test Suite
 
 ```bash
+# Run all 38 unit tests using standard library unittest
+python -m unittest discover tests
+
+# Or run with pytest if installed
 pytest tests/
 ```
+
+---
+
+## Evidence Model & False-Positive Prevention
+
+Every finding emitted by the marketplace adheres to a strict four-part evidence contract:
+1. **WHAT** (`observation`): Concrete, reproducible measurement or parsed string.
+2. **WHERE** (`source_url` & `affected_urls`): The exact page URLs where the issue was observed.
+3. **HOW** (`detection_method`): The deterministic parsing or structural heuristic used.
+4. **WHY** (`relevance` & `rationale`): Direct explanation of why this impacts AI discoverability, RAG vector retrieval, factual freshness, or user engagement.
+
+### False-Positive Controls
+- **Context-Gated Schema Checks**: `Product` / `Offer` schema is only expected on commercial pages (`/pricing`, `/product`, `/plans`). `Organization` schema is only expected on root/homepages. Missing product schema is never flagged on blog posts or documentation.
+- **Severity Boundaries**: Best practices (e.g. missing optional tags) are hard-capped at `MEDIUM` and never auto-elevated to `CRITICAL` or `HIGH`.
+- **Intelligent Deduplication**: URL-specific occurrences of the same underlying issue (e.g. missing canonical tags across multiple subpages) are unified into a single base finding with merged `affected_urls`, rather than polluting the report with repetitive entries.
+- **Output Schema Validation**: The orchestrator validates the final report against the required JSON schema with count consistency verification before returning.
 
 ---
 
@@ -77,7 +108,7 @@ pytest tests/
 ```json
 {
   "site": "https://example.com/",
-  "audited_at": "2026-08-29T18:15:00Z",
+  "audited_at": "2026-09-03T20:45:00Z",
   "summary": {
     "total_findings": 1,
     "critical": 0,
@@ -87,35 +118,46 @@ pytest tests/
   },
   "findings": [
     {
-      "id": "DISC-01",
-      "title": "Core Content Dependent on Client-Side JavaScript Hydration",
-      "category": "ai_discoverability",
+      "id": "KNOW-02-MISSING-ORG-SCHEMA",
+      "title": "Missing Primary Organization / WebSite Schema.org JSON-LD",
+      "category": "machine_readiness",
       "severity": "HIGH",
       "confidence": 0.95,
       "evidence": {
         "source_url": "https://example.com/",
-        "observation": "Raw HTTP HTML response contains 120 words vs rendered DOM 1450 words.",
-        "detection_method": "Dual-Stage DOM Hydration Delta",
+        "observation": "Homepage has 0 JSON-LD blocks but lacks Organization or WebSite Schema.org entity definitions.",
+        "detection_method": "Schema.org JSON-LD Parser",
+        "relevance": "LLM Knowledge Graph indexers look for explicit Organization schema on homepages to disambiguate brand entities.",
         "confidence": 0.95,
-        "timestamp": "2026-08-29T18:15:00Z",
+        "timestamp": "2026-09-03T20:45:00Z",
         "supporting_data": {
-          "dom_selector": "body > main"
+          "found_schema_types": []
         }
       },
-      "rationale": "Non-rendering AI crawlers fail to index 91.7% of main page copy.",
-      "affected_urls": ["https://example.com/"],
+      "rationale": "Without structured Organization JSON-LD markup, AI search assistants must guess company name, logo, social links, and brand descriptions.",
+      "affected_urls": [
+        "https://example.com/"
+      ],
       "suggested_action": {
-        "summary": "Implement Server-Side Rendering (SSR) or Dynamic Pre-rendering",
+        "summary": "Inject Organization Schema.org JSON-LD on the homepage.",
         "priority": 1,
         "remediation_steps": [
-          "Configure SSR in application framework.",
-          "Verify raw HTML output using 'curl -A \"GPTBot\" https://example.com/'."
+          "Add <script type=\"application/ld+json\"> with @type: Organization.",
+          "Include name, url, logo, description, and sameAs social profile links."
         ],
-        "expected_impact": "100% visibility for AI search crawlers and RAG indexers.",
-        "effort_estimate": "MEDIUM"
+        "expected_impact": "Establishes authoritative brand entity identity for AI knowledge graphs.",
+        "effort_estimate": "LOW"
       }
     }
   ],
-  "proactive_recommendations": []
+  "proactive_recommendations": [
+    {
+      "id": "REC-PROACTIVE-01-LLMS-TXT",
+      "title": "Publish an llms.txt Machine Index Manifest",
+      "category": "ai_discoverability",
+      "rationale": "The /llms.txt standard provides AI assistants and autonomous agents with a curated markdown directory of authoritative pages, reducing hallucination and token overhead.",
+      "suggested_implementation": "Publish a clean /llms.txt file at the domain root with curated markdown links to documentation, pricing, and product specs."
+    }
+  ]
 }
 ```

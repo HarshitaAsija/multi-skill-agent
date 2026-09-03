@@ -29,10 +29,22 @@ def main():
         help="Maximum pages to crawl (default: 15)"
     )
     parser.add_argument(
+        "--max-depth", "-d",
+        type=int,
+        default=2,
+        help="Maximum crawl link depth (default: 2)"
+    )
+    parser.add_argument(
         "--timeout", "-t",
         type=float,
         default=10.0,
         help="Per-request HTTP timeout in seconds (default: 10.0)"
+    )
+    parser.add_argument(
+        "--output", "-o",
+        type=str,
+        default=None,
+        help="Optional file path to write JSON report output"
     )
 
     args = parser.parse_args()
@@ -41,11 +53,19 @@ def main():
     result = orchestrator.run_audit(
         url=args.url,
         max_pages=args.max_pages,
+        max_depth=args.max_depth,
         timeout_seconds=args.timeout
     )
 
+    json_output = json.dumps(result, indent=2)
+
+    # If --output file specified, save to disk
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(json_output)
+
     # Output clean JSON report to stdout
-    print(json.dumps(result, indent=2))
+    print(json_output)
 
 if __name__ == "__main__":
     main()
