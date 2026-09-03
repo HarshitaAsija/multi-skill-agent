@@ -6,6 +6,7 @@ Responsible for:
   - Sitemap.xml discovery, validation, and freshness checks
   - Bounded representative template crawling
   - Raw HTML page analysis (title, meta tags, canonicals, landmarks, headings)
+  - Extractability & Schema.org entity knowledge checks
   - Producing empirical evidence-backed findings under ai_discoverability and machine_readiness
 """
 
@@ -27,13 +28,14 @@ from .robots_parser import RobotsParser, RobotsParseResult
 from .sitemap_parser import SitemapParser, SitemapParseResult
 from .crawler import BoundedCrawler, CrawledPage
 from .page_analyser import PageAnalyser, PageData
+from .extractability_checker import ExtractabilityChecker
 
 logger = get_logger("crawl_render_audit")
 
 
 class CrawlRenderAuditSkill:
     """
-    Skill module executing access, robots.txt, sitemap, bounded crawl, and page analysis.
+    Skill module executing access, robots.txt, sitemap, bounded crawl, page analysis, and extractability checks.
     """
 
     def __init__(self, http_client: Optional[SafeHTTPClient] = None):
@@ -42,6 +44,7 @@ class CrawlRenderAuditSkill:
         self.sitemap_parser = SitemapParser(http_client=self.http_client)
         self.crawler = BoundedCrawler(http_client=self.http_client)
         self.analyser = PageAnalyser()
+        self.extractability_checker = ExtractabilityChecker()
 
     def run(self, request: AuditRequest) -> Dict[str, Any]:
         """
@@ -94,7 +97,11 @@ class CrawlRenderAuditSkill:
             self._check_meta_robots_noindex(pdata, findings)
             self._check_canonical_integrity(pdata, findings)
 
-        logger.info(f"crawl-render-audit completed. Found {len(findings)} discoverability issues.")
+        # 5. Perform Extractability & Machine Readiness Checks
+        extractability_findings = self.extractability_checker.check_all(page_data_map)
+        findings.extend(extractability_findings)
+
+        logger.info(f"crawl-render-audit completed. Found {len(findings)} total discoverability/readiness issues.")
         return {
             "findings": findings,
             "pages": crawled_responses,

@@ -69,20 +69,29 @@ class Orchestrator:
         all_findings: List[Finding] = []
         proactive_recommendations: List[ProactiveRecommendation] = []
 
-        # 2. Execute Skill 1: crawl-render-audit
+        # 2. Execute Skill 1: crawl-render-audit (includes extractability & entity knowledge checks)
         crawl_res = self.crawl_skill.run(request)
         crawl_findings = crawl_res.get("findings", [])
         crawled_pages = crawl_res.get("pages", [])
+        page_data_map = crawl_res.get("page_data_map", {})
         all_findings.extend(crawl_findings)
 
-        # 3. Execute Skill 2: freshness-corroboration (if pages crawled successfully)
+        # 3. Execute Skill 2: freshness-corroboration (recency & cross-page brand consistency)
         if crawled_pages:
-            freshness_res = self.freshness_skill.run(request, pages=crawled_pages)
+            freshness_res = self.freshness_skill.run(
+                request,
+                pages=crawled_pages,
+                page_data_map=page_data_map
+            )
             all_findings.extend(freshness_res.get("findings", []))
 
-        # 4. Execute Skill 3: engagement-audit (if pages crawled successfully)
+        # 4. Execute Skill 3: engagement-audit (hero value prop, context retention, CTA clarity)
         if crawled_pages:
-            engagement_res = self.engagement_skill.run(request, pages=crawled_pages)
+            engagement_res = self.engagement_skill.run(
+                request,
+                pages=crawled_pages,
+                page_data_map=page_data_map
+            )
             all_findings.extend(engagement_res.get("findings", []))
 
         # 5. Deduplicate and Calibrate Findings
