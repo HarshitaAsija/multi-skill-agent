@@ -10,6 +10,7 @@ from shared.url_utils import is_valid_url, normalize_url
 from shared.http_client import SafeHTTPClient
 from shared.severity import SeverityEvaluator
 from shared.logging_utils import get_logger
+from shared.report_validator import validate_report
 from skills import load_skill_module
 
 logger = get_logger("orchestrator")
@@ -104,7 +105,18 @@ class Orchestrator:
             proactive_recommendations=proactive_recommendations
         )
 
-        return result.to_dict()
+        result_dict = result.to_dict()
+
+        # 7. Validate output schema before returning
+        is_valid, schema_errors = validate_report(result_dict)
+        if not is_valid:
+            logger.warning(f"Report schema validation flagged {len(schema_errors)} issue(s):")
+            for err in schema_errors:
+                logger.warning(f"  - {err}")
+        else:
+            logger.info("Report schema validation passed.")
+
+        return result_dict
 
     def _deduplicate_and_calibrate(self, raw_findings: List[Finding]) -> List[Finding]:
         """
