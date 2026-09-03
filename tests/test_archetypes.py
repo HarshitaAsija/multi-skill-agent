@@ -19,11 +19,13 @@ from skills import load_skill_module
 
 analyser_mod = load_skill_module("crawl-render-audit", "page_analyser.py")
 extract_mod = load_skill_module("crawl-render-audit", "extractability_checker.py")
+crawl_mod = load_skill_module("crawl-render-audit", "audit.py")
 fresh_mod = load_skill_module("freshness-corroboration", "audit.py")
 engagement_mod = load_skill_module("engagement-audit", "audit.py")
 
 PageAnalyser = analyser_mod.PageAnalyser
 ExtractabilityChecker = extract_mod.ExtractabilityChecker
+CrawlRenderAuditSkill = crawl_mod.CrawlRenderAuditSkill
 FreshnessCorroborationSkill = fresh_mod.FreshnessCorroborationSkill
 EngagementAuditSkill = engagement_mod.EngagementAuditSkill
 
@@ -37,6 +39,8 @@ CLEAN_SITE_HTML = """<!DOCTYPE html>
   <title>Acme Corp — AI Readiness Platform</title>
   <meta name="description" content="Enterprise AI readiness auditing by Acme Corp.">
   <meta name="robots" content="index, follow">
+  <meta property="og:title" content="Acme Corp — AI Readiness Platform">
+  <meta property="og:image" content="https://acme.com/og.png">
   <link rel="canonical" href="https://acme.com/">
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"Organization","name":"Acme Corp","url":"https://acme.com","logo":"https://acme.com/logo.png"}
@@ -196,6 +200,22 @@ class TestThinHtmlKnowledgeGap(unittest.TestCase):
             len(org_findings) > 0,
             msg="Expected missing Organization schema finding on thin JS page"
         )
+
+
+class TestClientSideHydrationLock(unittest.TestCase):
+    """Near-empty server HTML with SPA mount containers should flag DISC-07."""
+
+    def test_client_hydration_lock_flagged(self):
+        analyser = PageAnalyser()
+        pdata = analyser.analyse("https://spa-site.com/", THIN_HTML_SITE)
+
+        findings = []
+        skill = CrawlRenderAuditSkill(http_client=None)
+        skill._check_client_side_hydration_lock(pdata, THIN_HTML_SITE, findings)
+
+        hydration_findings = [f for f in findings if "CLIENT-HYDRATION-LOCK" in f.id]
+        self.assertTrue(len(hydration_findings) > 0)
+        self.assertEqual(hydration_findings[0].severity, "HIGH")
 
 
 class TestReportSchemaValidation(unittest.TestCase):

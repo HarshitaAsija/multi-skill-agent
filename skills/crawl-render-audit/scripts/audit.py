@@ -96,6 +96,8 @@ class CrawlRenderAuditSkill:
             # Page-level discoverability checks
             self._check_meta_robots_noindex(pdata, findings)
             self._check_canonical_integrity(pdata, findings)
+            self._check_client_side_hydration_lock(pdata, cp.response.body, findings)
+            self._check_social_card_metadata(pdata, findings)
 
         # 5. Perform Extractability & Machine Readiness Checks
         extractability_findings = self.extractability_checker.check_all(page_data_map)
@@ -285,6 +287,99 @@ class CrawlRenderAuditSkill:
                 )
             )
             findings.append(finding)
+
+    def _check_client_side_hydration_lock(
+        self,
+        pdata: PageData,
+        raw_html: str,
+        findings: List[Finding]
+    ) -> None:
+        """
+        Detects if a landing page is rendered client-side via JavaScript (SPA)
+        leaving raw server HTML devoid of text content (< 35 words), which blocks
+        text-only AI crawlers (like PerplexityBot, GPTBot) from indexing.
+        """
+        if pdata.url.rstrip("/").count("/") <= 3:
+            raw_lower = raw_html.lower()
+            has_spa_root = any(
+                tag in raw_lower for tag in (
+                    'id="root"', 'id="app"', 'id="__next"', 'id="___gatsby"',
+                    'data-reactroot', '<app-root'
+                )
+            )
+            if pdata.word_count < 35 and (has_spa_root or "<script" in raw_lower):
+                evidence = EvidenceBuilder.build(
+                    source_url=pdata.url,
+                    observation=f"Raw server HTML response contains only {pdata.word_count} visible words with client-side JavaScript mounting indicators.",
+                    detection_method="Server DOM Hydration Text Density Analyzer",
+                    relevance="Text-only AI crawlers and LLM indexers do not execute client-side JavaScript when crawling. If main body content is rendered client-side, machine search indexers extract an empty document.",
+                    confidence=0.90,
+                    extra_data={"word_count": pdata.word_count, "raw_length": pdata.raw_text_length}
+                )
+                finding = Finding(
+                    id=f"DISC-07-CLIENT-HYDRATION-LOCK-{pdata.url}",
+                    title="Client-Side JavaScript Hydration Dependency (Sparse Server HTML)",
+                    category=CATEGORY_AI_DISCOVERABILITY,
+                    severity=SEVERITY_HIGH,
+                    confidence=0.90,
+                    evidence=evidence,
+                    rationale="AI search crawlers (PerplexityBot, standard crawler passes) do not execute heavy client-side JavaScript bundles. Sparse server-rendered HTML causes complete omission of brand information from AI answer engines.",
+                    affected_urls=[pdata.url],
+                    suggested_action=SuggestedAction(
+                        summary="Implement Server-Side Rendering (SSR) or Static Site Generation (SSG) for public landing pages.",
+                        priority=1,
+                        remediation_steps=[
+                            "Enable Server-Side Rendering (e.g. Next.js SSR, Nuxt, Remix) for public landing pages.",
+                            "Verify raw HTML contains complete text content by querying with 'curl -s https://yourdomain.com | wc -w'."
+                        ],
+                        expected_impact="Restores 100% visibility for non-headless AI search crawlers.",
+                        effort_estimate="MEDIUM"
+                    )
+                )
+                findings.append(finding)
+
+    def _check_social_card_metadata(
+        self,
+        pdata: PageData,
+        findings: List[Finding]
+    ) -> None:
+        """
+        Checks for OpenGraph citation cards (og:title, og:image) on main landing pages.
+        """
+        if pdata.url.rstrip("/").count("/") <= 2:  # Homepage level
+            has_og_title = bool(pdata.open_graph.get("og:title"))
+            has_og_image = bool(pdata.open_graph.get("og:image"))
+
+            if not has_og_title and not has_og_image:
+                evidence = EvidenceBuilder.build(
+                    source_url=pdata.url,
+                    observation="Homepage lacks OpenGraph preview metadata (<meta property=\"og:title\"> and <meta property=\"og:image\">).",
+                    detection_method="OpenGraph Meta Tag Inspector",
+                    relevance="AI search engines (Perplexity, SearchGPT) and social preview engines use OpenGraph tags to render visual citation cards and brand logos alongside source answers.",
+                    confidence=0.85
+                )
+                finding = Finding(
+                    id=f"DISC-06-MISSING-SOCIAL-METADATA-{pdata.url}",
+                    title="Missing OpenGraph / Social Citation Card Metadata",
+                    category=CATEGORY_AI_DISCOVERABILITY,
+                    severity=SEVERITY_LOW,
+                    confidence=0.85,
+                    evidence=evidence,
+                    rationale="Without OpenGraph tags, AI chat interfaces render plain fallback links instead of high-converting branded citation snippets.",
+                    affected_urls=[pdata.url],
+                    suggested_action=SuggestedAction(
+                        summary="Add og:title, og:description, and og:image tags to the homepage <head>.",
+                        priority=4,
+                        remediation_steps=[
+                            "Inject <meta property=\"og:title\" content=\"Your Brand\"> into <head>.",
+                            "Inject <meta property=\"og:image\" content=\"https://domain.com/og.png\">.",
+                            "Inject <meta property=\"og:description\" content=\"...\">."
+                        ],
+                        expected_impact="Ensures branded visual cards in AI citation snippets.",
+                        effort_estimate="LOW"
+                    )
+                )
+                findings.append(finding)
 
     def _handle_unreachable_target(
         self,
