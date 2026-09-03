@@ -39,5 +39,31 @@ class TestEngagementSkill(unittest.TestCase):
         self.assertTrue(len(cta_findings) > 0)
         self.assertIn("Click Here", cta_findings[0].evidence.observation)
 
+    def test_form_friction_detection(self):
+        unlabeled_form_html = """<!DOCTYPE html>
+        <html>
+        <head><title>Contact Form</title></head>
+        <body>
+            <h1>Contact Us</h1>
+            <form action="/submit">
+                <input type="text" name="name" placeholder="Your name">
+                <input type="email" name="email" placeholder="Your email">
+                <button type="submit">Send</button>
+            </form>
+        </body>
+        </html>
+        """
+        analyser = PageAnalyser()
+        pdata = analyser.analyse("https://example.com/contact", unlabeled_form_html)
+
+        skill = EngagementAuditSkill()
+        req = AuditRequest(url="https://example.com/contact")
+        res = skill.run(req, pages=[], page_data_map={"https://example.com/contact": pdata})
+
+        findings = res.get("findings", [])
+        form_findings = [f for f in findings if "FORM-INPUT-FRICTION" in f.id]
+        self.assertTrue(len(form_findings) > 0)
+        self.assertEqual(form_findings[0].category, "onsite_engagement")
+
 if __name__ == "__main__":
     unittest.main()

@@ -55,6 +55,10 @@ class PageData:
         self.button_cta_labels: List[str] = []           # Button / CTA label text
         self.footer_text: str = ""                       # Footer text (for copyright scanning)
         self.has_h1: bool = False
+        self.has_form: bool = False
+        self.form_inputs_missing_labels: int = 0
+        self.date_published: Optional[str] = None
+        self.date_modified: Optional[str] = None
 
     @property
     def images_missing_alt_count(self) -> int:
@@ -114,6 +118,8 @@ class PageAnalyser:
         self._extract_cta_labels(soup, data)
         self._extract_footer(soup, data)
         self._extract_text_metrics(soup, data)
+        self._extract_temporal_dates(soup, data)
+        self._extract_forms(soup, data)
 
         return data
 
@@ -298,3 +304,58 @@ class PageAnalyser:
         data.raw_text_length = len(visible_text)
         data.word_count = len(visible_text.split())
         data.body_text_sample = visible_text[:2000]
+
+    # ------------------------------------------------------------------ #
+    #  Temporal Dates (Publication / Modified)                            #
+    # ------------------------------------------------------------------ #
+    def _extract_temporal_dates(self, soup: BeautifulSoup, data: PageData) -> None:
+        for meta in soup.find_all("meta"):
+            prop = (meta.get("property") or meta.get("name") or "").lower()
+            content = (meta.get("content") or "").strip()
+            if not content:
+                continue
+            if prop in ("article:published_time", "og:published_time", "publication_date", "datepublished"):
+                data.date_published = content[:30]
+            elif prop in ("article:modified_time", "og:modified_time", "last-modified", "datemodified"):
+                data.date_modified = content[:30]
+
+        if not data.date_published:
+            time_tag = soup.find("time", attrs={"datetime": True})
+            if time_tag and isinstance(time_tag, Tag):
+                data.date_published = (time_tag.get("datetime") or "").strip()[:30]
+
+        for block in data.json_ld_blocks:
+            if isinstance(block, dict):
+                pub = block.get("datePublished")
+                mod = block.get("dateModified")
+                if pub and not data.date_published:
+                    data.date_published = str(pub).strip()[:30]
+                if mod and not data.date_modified:
+                    data.date_modified = str(mod).strip()[:30]
+
+    # ------------------------------------------------------------------ #
+    #  Form Accessibility & Conversion Affordances                         #
+    # ------------------------------------------------------------------ #
+    def _extract_forms(self, soup: BeautifulSoup, data: PageData) -> None:
+        forms = soup.find_all("form")
+        if not forms:
+            return
+        data.has_form = True
+
+        for form in forms:
+            inputs = form.find_all(["input", "textarea", "select"])
+            for inp in inputs:
+                itype = (inp.get("type") or "text").lower()
+                if itype in ("hidden", "submit", "button", "image", "reset"):
+                    continue
+                iid = inp.get("id")
+                has_label = False
+                if iid and soup.find("label", attrs={"for": iid}):
+                    has_label = True
+                elif inp.find_parent("label"):
+                    has_label = True
+                elif inp.get("aria-label") or inp.get("aria-labelledby"):
+                    has_label = True
+
+                if not has_label:
+                    data.form_inputs_missing_labels += 1

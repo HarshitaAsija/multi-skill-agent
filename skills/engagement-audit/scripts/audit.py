@@ -58,6 +58,7 @@ class EngagementAuditSkill:
             self._check_above_the_fold_value_prop(pdata, findings)
             self._check_context_isolation_breadcrumbs(pdata, findings)
             self._check_cta_label_ambiguity(pdata, findings)
+            self._check_form_friction(pdata, findings)
 
         return {"findings": findings}
 
@@ -173,6 +174,44 @@ class EngagementAuditSkill:
                         "Replace 'Click Here' or 'Submit' with descriptive text (e.g. 'Get Started Free', 'Download Report')."
                     ],
                     expected_impact="Increases user conversion rates and next-step action clarity.",
+                    effort_estimate="LOW"
+                )
+            )
+            findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  ENG-04: Form Conversion Friction & Missing Field Labels           #
+    # ------------------------------------------------------------------ #
+    def _check_form_friction(self, pdata: PageData, findings: List[Finding]) -> None:
+        """
+        Checks for forms with missing accessible labels or high input friction.
+        """
+        if pdata.has_form and pdata.form_inputs_missing_labels > 0:
+            evidence = EvidenceBuilder.build(
+                source_url=pdata.url,
+                observation=f"Form contains {pdata.form_inputs_missing_labels} input field(s) lacking associated <label for='...'> tags or aria-label attributes.",
+                detection_method="DOM Form Accessibility & Label Inspector",
+                relevance="Unlabeled form inputs create accessibility violations and user hesitation on conversion pages, causing significant drop-off for visitors referred by AI assistants.",
+                confidence=0.90,
+                extra_data={"missing_label_count": pdata.form_inputs_missing_labels}
+            )
+            finding = Finding(
+                id=f"ENG-04-FORM-INPUT-FRICTION-{pdata.url}",
+                title="Form Input Accessibility & Conversion Friction (Missing Field Labels)",
+                category=CATEGORY_ONSITE_ENGAGEMENT,
+                severity=SEVERITY_MEDIUM if pdata.form_inputs_missing_labels >= 3 else SEVERITY_LOW,
+                confidence=0.90,
+                evidence=evidence,
+                rationale="Visitors arriving via AI search recommendation need seamless conversion paths. Missing labels cause cognitive drop-off and screen reader barriers.",
+                affected_urls=[pdata.url],
+                suggested_action=SuggestedAction(
+                    summary="Attach explicit <label for='...'> or aria-label attributes to all form inputs.",
+                    priority=2,
+                    remediation_steps=[
+                        "Ensure each <input> has a unique id attribute.",
+                        "Add a corresponding <label for='inputId'> with clear placeholder or title text."
+                    ],
+                    expected_impact="Reduces form abandonment and improves conversion rate for arriving visitors.",
                     effort_estimate="LOW"
                 )
             )

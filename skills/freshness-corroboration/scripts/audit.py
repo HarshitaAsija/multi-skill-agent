@@ -48,6 +48,7 @@ class FreshnessCorroborationSkill:
 
         self._check_copyright_recency(page_data_map, findings)
         self._check_cross_page_brand_identity(page_data_map, findings)
+        self._check_article_freshness(page_data_map, findings)
 
         return {"findings": findings}
 
@@ -164,6 +165,73 @@ class FreshnessCorroborationSkill:
                         "Ensure all page JSON-LD scripts use the exact same Organization name attribute."
                     ],
                     expected_impact="Improves entity resolution and Knowledge Graph confidence.",
+                    effort_estimate="LOW"
+                )
+            )
+            findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  FRESH-03: Article & Content Temporal Anchors Recency              #
+    # ------------------------------------------------------------------ #
+    def _check_article_freshness(
+        self,
+        page_data_map: Dict[str, PageData],
+        findings: List[Finding]
+    ) -> None:
+        """
+        Flags blog/editorial content that has stale timestamps (> 2 years old),
+        reducing AI search freshness confidence.
+        """
+        stale_articles: List[Dict[str, Any]] = []
+
+        for url, pdata in page_data_map.items():
+            is_editorial = any(kw in url.lower() for kw in ("/blog", "/news", "/posts", "/article", "/guide")) or \
+                           any(t in ("Article", "BlogPosting", "NewsArticle", "TechArticle") for t in pdata.json_ld_types)
+
+            if not is_editorial:
+                continue
+
+            date_str = pdata.date_modified or pdata.date_published
+            if date_str:
+                year_match = re.search(r"\b(20\d\d)\b", date_str)
+                if year_match:
+                    year = int(year_match.group(1))
+                    if year < CURRENT_YEAR - 2:
+                        stale_articles.append({
+                            "url": url,
+                            "year": year,
+                            "date_str": date_str
+                        })
+
+        if stale_articles:
+            affected = [a["url"] for a in stale_articles]
+            sample = stale_articles[0]
+            evidence = EvidenceBuilder.build(
+                source_url=sample["url"],
+                observation=f"Editorial article has stale timestamp '{sample['date_str']}' ({CURRENT_YEAR - sample['year']} years old). Detected on {len(affected)} page(s).",
+                detection_method="Article Temporal Metadata Inspector",
+                relevance="AI search engines (Perplexity, ChatGPT Search, Gemini) prioritize fresh sources and downrank dated technical tutorials or guides that haven't been reviewed in over 2 years.",
+                confidence=0.90,
+                extra_data={"stale_article_count": len(affected), "sample_year": sample["year"]}
+            )
+
+            finding = Finding(
+                id="FRESH-03-STALE-EDITORIAL-CONTENT",
+                title="Stale Publication / Modification Date on Editorial Content",
+                category=CATEGORY_FACTUAL_FRESHNESS,
+                severity=SEVERITY_LOW,
+                confidence=0.90,
+                evidence=evidence,
+                rationale="Un-refreshed technical articles or guides can convey deprecated specifications to AI retrieval systems, leading to outdated citations.",
+                affected_urls=affected,
+                suggested_action=SuggestedAction(
+                    summary="Review and refresh aging editorial articles, updating dateModified in Schema.org.",
+                    priority=3,
+                    remediation_steps=[
+                        "Audit older blog and documentation pages for factual accuracy.",
+                        "Add or update dateModified JSON-LD metadata when content is refreshed."
+                    ],
+                    expected_impact="Boosts AI search recency score and citation likelihood.",
                     effort_estimate="LOW"
                 )
             )
