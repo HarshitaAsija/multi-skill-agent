@@ -161,3 +161,20 @@ Every finding emitted by the marketplace adheres to a strict four-part evidence 
   ]
 }
 ```
+
+---
+
+## Submission Packaging & Verification
+
+To build and verify the standalone marketplace submission archive:
+
+```bash
+python scripts/package_submission.py
+```
+
+This automated validator:
+1. Executes all 39 automated unit tests.
+2. Validates `marketplace.json` schema and agentskills.io compliance for every `SKILL.md`.
+3. Creates a clean, compressed submission archive (`agent-skill-marketplace-submission.zip`).
+4. Verifies the archive size is well within the 50 MB limit (< 100 KB).
+5. Unpacks the archive into an isolated temporary directory and confirms standalone CLI execution.
