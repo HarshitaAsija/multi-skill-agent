@@ -65,6 +65,10 @@ def validate_report(report: Dict[str, Any]) -> Tuple[bool, List[str]]:
     recs = report.get("proactive_recommendations")
     if not isinstance(recs, list):
         errors.append("Missing or invalid 'proactive_recommendations' field (must be an array)")
+    else:
+        for i, rec in enumerate(recs):
+            rec_errors = _validate_recommendation(rec, i)
+            errors.extend(rec_errors)
 
     is_valid = len(errors) == 0
     return is_valid, errors
@@ -110,5 +114,28 @@ def _validate_finding(finding: Dict[str, Any], index: int) -> List[str]:
     affected_urls = finding.get("affected_urls")
     if not isinstance(affected_urls, list) or len(affected_urls) == 0:
         errors.append(f"{prefix}.affected_urls must be a non-empty array")
+
+    return errors
+
+
+def _validate_recommendation(rec: Dict[str, Any], index: int) -> List[str]:
+    errors: List[str] = []
+    prefix = f"proactive_recommendations[{index}]"
+
+    if not isinstance(rec.get("id"), str) or not rec["id"]:
+        errors.append(f"{prefix}.id is missing or empty")
+
+    if not isinstance(rec.get("title"), str) or not rec["title"]:
+        errors.append(f"{prefix}.title is missing or empty")
+
+    category = rec.get("category")
+    if category not in VALID_CATEGORIES:
+        errors.append(f"{prefix}.category '{category}' is invalid")
+
+    if not isinstance(rec.get("rationale"), str) or not rec["rationale"]:
+        errors.append(f"{prefix}.rationale is missing or empty")
+
+    if not isinstance(rec.get("suggested_implementation"), str) or not rec["suggested_implementation"]:
+        errors.append(f"{prefix}.suggested_implementation is missing or empty")
 
     return errors
