@@ -46,6 +46,11 @@ def main():
         default=None,
         help="Optional file path to write JSON report output"
     )
+    parser.add_argument(
+        "--summary", "-s",
+        action="store_true",
+        help="Display human-readable executive summary in terminal instead of raw JSON"
+    )
 
     args = parser.parse_args()
 
@@ -64,8 +69,54 @@ def main():
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(json_output)
 
-    # Output clean JSON report to stdout
-    print(json_output)
+    # Output formatted summary or clean JSON report to stdout
+    if args.summary:
+        print_summary(result)
+    else:
+        print(json_output)
+
+
+def print_summary(report: dict) -> None:
+    site = report.get("site", "Unknown")
+    audited_at = report.get("audited_at", "")
+    summary = report.get("summary", {})
+    findings = report.get("findings", [])
+    recs = report.get("proactive_recommendations", [])
+
+    print("\n" + "=" * 70)
+    print("  AGENT SKILL MARKETPLACE — AUDIT EXECUTIVE SUMMARY")
+    print("=" * 70)
+    print(f"Target Site:   {site}")
+    print(f"Audited At:    {audited_at}")
+    print(f"Total Issues:  {summary.get('total_findings', 0)} "
+          f"(CRITICAL: {summary.get('critical', 0)} | "
+          f"HIGH: {summary.get('high', 0)} | "
+          f"MEDIUM: {summary.get('medium', 0)} | "
+          f"LOW: {summary.get('low', 0)})")
+    print("-" * 70)
+
+    if not findings:
+        print("  [OK] No critical issues detected. Site demonstrates high AI readiness.")
+    else:
+        for idx, f in enumerate(findings, 1):
+            sev = f.get("severity", "INFO").upper()
+            fid = f.get("id", "")
+            title = f.get("title", "")
+            action = f.get("suggested_action", {}).get("summary", "")
+            affected = len(f.get("affected_urls", []))
+            print(f"\n{idx}. [{sev}] {fid}")
+            print(f"   Title:    {title}")
+            print(f"   Scope:    Affects {affected} page(s)")
+            print(f"   Fix:      {action}")
+
+    if recs:
+        print("\n" + "-" * 70)
+        print("  PROACTIVE RECOMMENDATIONS")
+        print("-" * 70)
+        for r in recs:
+            print(f"  * {r.get('title')}: {r.get('suggested_implementation')}")
+
+    print("\n" + "=" * 70 + "\n")
 
 if __name__ == "__main__":
     main()
