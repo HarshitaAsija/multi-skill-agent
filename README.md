@@ -36,33 +36,73 @@ The marketplace consists of four modular skills:
 
 ```bash
 # Clone repository
-cd goofy-davinci
+git clone https://github.com/HarshitaAsija/multi-skill-agent.git
+cd multi-skill-agent
 
-# Install lightweight dependencies
+# Install lightweight dependencies (only beautifulsoup4)
 pip install -r requirements.txt
 ```
 
 ---
 
-## Usage
+## Local Testing Guide
 
-### Run Audit CLI
+### Step 1 — Run an Audit on Any Website
+
 ```bash
-# Basic audit (JSON to stdout)
+# Option A: Human-readable executive summary in terminal (recommended for quick testing)
+python run_audit.py --url https://example.com --summary
+
+# Option B: Full structured JSON report to stdout
 python run_audit.py --url https://example.com
 
-# Comprehensive audit with custom limits and file output
-python run_audit.py --url https://example.com --max-pages 20 --max-depth 3 --timeout 10.0 --output report.json
+# Option C: Audit with custom page limit and save report to a file
+python run_audit.py --url https://example.com --max-pages 5 --max-depth 2 --output report.json
 ```
 
-CLI Options:
-- `--url`, `-u`: Target website URL to audit (required, e.g., `https://example.com`)
-- `--max-pages`, `-p`: Maximum pages to crawl across template buckets (default: 15)
-- `--max-depth`, `-d`: Maximum crawl link depth (default: 2)
-- `--timeout`, `-t`: Per-request HTTP timeout in seconds (default: 10.0)
-- `--output`, `-o`: Optional file path to write the formatted JSON report
+`--summary` produces a formatted terminal view with severity badges, affected page counts, fix summaries, and proactive recommendations.
+
+### Step 2 — Run the Automated Test Suite
+
+```bash
+python -m unittest discover tests
+```
+
+Expected output:
+```
+Ran 41 tests in ~1.0s
+OK
+```
+
+### Step 3 — Build & Validate the Submission Package
+
+```bash
+python scripts/package_submission.py
+```
+
+This automated validator:
+1. Executes all 41 unit tests.
+2. Validates `marketplace.json` and agentskills.io `SKILL.md` compliance for all skills.
+3. Creates `agent-skill-marketplace-submission.zip` (~72 KB, well within the 50 MB limit).
+4. Unpacks the archive into an isolated temporary sandbox and confirms standalone CLI execution.
+
+---
+
+## Usage
+
+### CLI Options Reference
+
+| Flag | Shorthand | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--url` | `-u` | Target website URL to audit | *(Required)* |
+| `--summary` | `-s` | Display formatted terminal executive summary | `False` |
+| `--output` | `-o` | Save JSON report to a file path | `None` (stdout) |
+| `--max-pages` | `-p` | Maximum pages to crawl across template buckets | `15` |
+| `--max-depth` | `-d` | Maximum crawl link depth | `2` |
+| `--timeout` | `-t` | Per-request HTTP timeout in seconds | `10.0` |
 
 ### Run Audit Programmatically
+
 ```python
 from skills import load_skill_module
 
@@ -71,18 +111,6 @@ orchestrator = orch_mod.Orchestrator()
 
 result = orchestrator.run_audit("https://example.com", max_pages=15, max_depth=2)
 print(result)
-```
-
----
-
-## Running Test Suite
-
-```bash
-# Run all 38 unit tests using standard library unittest
-python -m unittest discover tests
-
-# Or run with pytest if installed
-pytest tests/
 ```
 
 ---
@@ -173,7 +201,7 @@ python scripts/package_submission.py
 ```
 
 This automated validator:
-1. Executes all 39 automated unit tests.
+1. Executes all 41 automated unit tests.
 2. Validates `marketplace.json` schema and agentskills.io compliance for every `SKILL.md`.
 3. Creates a clean, compressed submission archive (`agent-skill-marketplace-submission.zip`).
 4. Verifies the archive size is well within the 50 MB limit (< 100 KB).
