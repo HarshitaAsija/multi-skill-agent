@@ -59,6 +59,9 @@ class PageData:
         self.form_inputs_missing_labels: int = 0
         self.date_published: Optional[str] = None
         self.date_modified: Optional[str] = None
+        self.same_as_links: List[str] = []      # sameAs links from Organization JSON-LD
+        self.has_faq_schema: bool = False        # FAQPage / Speakable JSON-LD present
+        self.page_title_brand: Optional[str] = None  # Last segment of title tag (brand suffix)
 
     @property
     def images_missing_alt_count(self) -> int:
@@ -130,6 +133,12 @@ class PageAnalyser:
         title_tag = soup.find("title")
         if title_tag:
             data.title = title_tag.get_text(strip=True) or None
+            if data.title:
+                # Extract brand suffix — last segment after ' | ' or ' - ' separator
+                for sep in (" | ", " - ", " — ", " · "):
+                    if sep in data.title:
+                        data.page_title_brand = data.title.split(sep)[-1].strip()
+                        break
 
         desc = soup.find("meta", attrs={"name": re.compile(r"^description$", re.I)})
         if desc and isinstance(desc, Tag):
@@ -235,12 +244,25 @@ class PageAnalyser:
                 for block in blocks:
                     data.json_ld_blocks.append(block)
                     self._collect_schema_types(block, data.json_ld_types)
+                    # Extract sameAs links from Organization / WebSite blocks
+                    if isinstance(block, dict):
+                        same_as = block.get("sameAs")
+                        if same_as:
+                            if isinstance(same_as, list):
+                                data.same_as_links.extend([s for s in same_as if isinstance(s, str)])
+                            elif isinstance(same_as, str):
+                                data.same_as_links.append(same_as)
             except json.JSONDecodeError as e:
                 logger.debug(f"JSON-LD parse error at {data.url}: {e}")
 
         # Check for BreadcrumbList in JSON-LD
         if "BreadcrumbList" in data.json_ld_types:
             data.has_breadcrumb = True
+
+        # Detect FAQ / Speakable schema presence
+        faq_types = {"FAQPage", "Speakable", "QAPage", "HowTo"}
+        if faq_types.intersection(set(data.json_ld_types)):
+            data.has_faq_schema = True
 
     def _collect_schema_types(self, obj: Any, types_list: List[str]) -> None:
         if isinstance(obj, dict):

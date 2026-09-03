@@ -99,7 +99,13 @@ class CrawlRenderAuditSkill:
             self._check_client_side_hydration_lock(pdata, cp.response.body, findings)
             self._check_social_card_metadata(pdata, findings)
 
-        # 5. Perform Extractability & Machine Readiness Checks
+        # 5. Check /llms.txt availability (DISC-08) — once per domain
+        self._check_llms_txt(request.url, findings)
+
+        # 6. Check sameAs entity authority on homepage (KNOW-05)
+        self._check_same_as_entity_authority(request.url, page_data_map, findings)
+
+        # 7. Perform Extractability & Machine Readiness Checks
         extractability_findings = self.extractability_checker.check_all(page_data_map)
         findings.extend(extractability_findings)
 
@@ -416,6 +422,129 @@ class CrawlRenderAuditSkill:
                 ],
                 expected_impact="Restores website availability.",
                 effort_estimate="HIGH"
+            )
+        )
+        findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  DISC-08: /llms.txt Machine-Readable Index                         #
+    # ------------------------------------------------------------------ #
+    def _check_llms_txt(self, root_url: str, findings: List[Finding]) -> None:
+        """
+        Probes for /llms.txt at the domain root — the emerging standard for
+        providing AI assistants with a curated machine-readable content index.
+        """
+        from urllib.parse import urlparse
+        from shared.url_utils import normalize_url
+        parsed = urlparse(normalize_url(root_url))
+        llms_url = f"{parsed.scheme}://{parsed.netloc}/llms.txt"
+
+        resp = self.http_client.fetch(llms_url)
+        if resp.is_success and resp.body and len(resp.body.strip()) > 10:
+            return  # /llms.txt exists and has content
+
+        evidence = EvidenceBuilder.build(
+            source_url=llms_url,
+            observation=f"No /llms.txt file found at {llms_url} (HTTP {resp.status_code or 'timeout/error'}).",
+            detection_method="HTTP GET Probe — /llms.txt Standard",
+            relevance="The /llms.txt standard (adopted by Cloudflare, Anthropic, Perplexity) provides AI assistants with a curated markdown index of authoritative pages, docs, and APIs — reducing hallucinations and improving citation accuracy.",
+            confidence=1.0,
+            http_status=resp.status_code,
+            extra_data={"llms_txt_url": llms_url}
+        )
+        finding = Finding(
+            id="DISC-08-MISSING-LLMS-TXT",
+            title="Missing /llms.txt Machine-Readable Content Index",
+            category=CATEGORY_AI_DISCOVERABILITY,
+            severity=SEVERITY_MEDIUM,
+            confidence=1.0,
+            evidence=evidence,
+            rationale="The /llms.txt standard is rapidly becoming the robots.txt equivalent for LLMs. Sites without it miss a direct channel to guide AI assistants to their most authoritative, citation-worthy content.",
+            affected_urls=[root_url],
+            suggested_action=SuggestedAction(
+                summary="Publish a /llms.txt file at the domain root listing key pages in markdown format.",
+                priority=2,
+                remediation_steps=[
+                    "Create a plain-text file at https://yourdomain.com/llms.txt.",
+                    "List key page titles and URLs in markdown format: [Page Title](URL).",
+                    "Include documentation, pricing, product overview, and contact pages."
+                ],
+                expected_impact="AI assistants directly ingest /llms.txt as a trusted content index, improving citation quality and reducing hallucinations about your brand.",
+                effort_estimate="LOW"
+            )
+        )
+        findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  KNOW-05: Organization sameAs Entity Authority Links               #
+    # ------------------------------------------------------------------ #
+    def _check_same_as_entity_authority(
+        self,
+        root_url: str,
+        page_data_map: Dict[str, Any],
+        findings: List[Finding]
+    ) -> None:
+        """
+        Checks if the homepage Organization JSON-LD declares sameAs links
+        to authoritative identity sources (Wikipedia, LinkedIn, Wikidata, Crunchbase).
+        """
+        AUTHORITY_DOMAINS = (
+            "wikipedia.org", "linkedin.com", "wikidata.org",
+            "crunchbase.com", "twitter.com", "github.com"
+        )
+        homepage_data = None
+        for url, pdata in page_data_map.items():
+            if url.rstrip("/").count("/") <= 3:
+                homepage_data = pdata
+                break
+
+        if not homepage_data:
+            return
+
+        has_org_schema = any(
+            t in ("Organization", "Corporation", "WebSite")
+            for t in homepage_data.json_ld_types
+        )
+        if not has_org_schema:
+            return  # No Org schema — KNOW-02 covers that separately
+
+        authority_links = [
+            link for link in homepage_data.same_as_links
+            if any(domain in link.lower() for domain in AUTHORITY_DOMAINS)
+        ]
+        if authority_links:
+            return  # sameAs already present
+
+        evidence = EvidenceBuilder.build(
+            source_url=homepage_data.url,
+            observation=(
+                f"Organization JSON-LD found but contains no 'sameAs' links to authority sources "
+                f"(Wikipedia, LinkedIn, Wikidata, Crunchbase). "
+                f"Existing sameAs: {homepage_data.same_as_links or 'none'}."
+            ),
+            detection_method="JSON-LD Organization Schema Inspector",
+            relevance="AI knowledge graphs resolve brand identity through sameAs co-references. Without them, your entity may be conflated with similarly-named brands or lack a Knowledge Panel.",
+            confidence=0.95,
+            extra_data={"same_as_found": homepage_data.same_as_links}
+        )
+        finding = Finding(
+            id="KNOW-05-MISSING-SAME-AS-AUTHORITY",
+            title="Organization Schema Missing sameAs Entity Authority Links",
+            category=CATEGORY_MACHINE_READINESS,
+            severity=SEVERITY_MEDIUM,
+            confidence=0.95,
+            evidence=evidence,
+            rationale="sameAs links in Organization JSON-LD are the primary mechanism by which AI search engines disambiguate brand entities and establish Knowledge Panel authority.",
+            affected_urls=[homepage_data.url],
+            suggested_action=SuggestedAction(
+                summary="Add sameAs links to your Organization JSON-LD pointing to Wikipedia, LinkedIn, and/or Wikidata.",
+                priority=2,
+                remediation_steps=[
+                    "In your homepage Organization JSON-LD, add: \"sameAs\": [\"https://en.wikipedia.org/wiki/YourBrand\", \"https://linkedin.com/company/yourbrand\"].",
+                    "Create or claim a Wikidata entry for your organization if one does not exist."
+                ],
+                expected_impact="Establishes entity authority in AI knowledge graphs, improving brand disambiguation and Knowledge Panel eligibility.",
+                effort_estimate="LOW"
             )
         )
         findings.append(finding)

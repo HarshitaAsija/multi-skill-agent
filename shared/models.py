@@ -148,6 +148,7 @@ class AuditResult:
     summary: SeveritySummary = field(default_factory=SeveritySummary)
     findings: List[Finding] = field(default_factory=list)
     proactive_recommendations: List[ProactiveRecommendation] = field(default_factory=list)
+    ai_readiness_score: int = 100  # 0-100 composite score, computed after deduplication
 
     def calculate_summary(self) -> None:
         """Recalculates counts by severity from current findings list."""
@@ -169,6 +170,7 @@ class AuditResult:
         return {
             "site": self.site,
             "audited_at": self.audited_at,
+            "ai_readiness_score": self.ai_readiness_score,
             "summary": self.summary.to_dict(),
             "findings": [f.to_dict() for f in self.findings],
             "proactive_recommendations": [r.to_dict() for r in self.proactive_recommendations],

@@ -218,6 +218,33 @@ class TestClientSideHydrationLock(unittest.TestCase):
         self.assertEqual(hydration_findings[0].severity, "HIGH")
 
 
+class TestMissingImageAltText(unittest.TestCase):
+    """Pages where all images lack alt text should flag KNOW-04."""
+
+    def test_missing_alt_text_flagged(self):
+        html = '''<!DOCTYPE html>
+        <html>
+        <head><title>No Alt Text Page</title></head>
+        <body>
+            <img src="/img1.png">
+            <img src="/img2.jpg">
+            <img src="/img3.svg">
+        </body>
+        </html>'''
+        analyser = PageAnalyser()
+        pdata = analyser.analyse("https://example.com/no-alt", html)
+
+        self.assertEqual(pdata.total_images_count, 3)
+        self.assertEqual(pdata.images_missing_alt_count, 3)
+
+        checker = ExtractabilityChecker()
+        ext_findings = checker.check_all({"https://example.com/no-alt": pdata})
+
+        alt_findings = [f for f in ext_findings if "MISSING-IMAGE-ALT" in f.id]
+        self.assertEqual(len(alt_findings), 1)
+        self.assertEqual(alt_findings[0].severity, "LOW")
+
+
 class TestReportSchemaValidation(unittest.TestCase):
     """Report validator must correctly flag malformed and accept well-formed reports."""
 
@@ -227,6 +254,7 @@ class TestReportSchemaValidation(unittest.TestCase):
         valid_report = {
             "site": "https://example.com/",
             "audited_at": "2026-09-03T12:00:00+00:00",
+            "ai_readiness_score": 85,
             "summary": {
                 "total_findings": 1,
                 "critical": 0,
@@ -262,6 +290,7 @@ class TestReportSchemaValidation(unittest.TestCase):
         bad_report = {
             "site": "",  # empty — should fail
             "audited_at": "2026-09-03",
+            "ai_readiness_score": 150, # invalid score -> should fail
             "summary": {"total_findings": 2, "critical": 1, "high": 0, "medium": 0, "low": 0},
             "findings": [],  # total_findings=2 but findings is empty → count mismatch
             "proactive_recommendations": [],

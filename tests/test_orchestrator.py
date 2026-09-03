@@ -123,6 +123,7 @@ class TestOrchestrator(unittest.TestCase):
         report = {
             "site": "https://example.com",
             "audited_at": "2026-09-03T12:00:00+00:00",
+            "ai_readiness_score": 100,
             "summary": {
                 "total_findings": 0,
                 "critical": 0,
@@ -135,6 +136,26 @@ class TestOrchestrator(unittest.TestCase):
         }
         is_valid, errors = validate_report(report)
         self.assertTrue(is_valid, msg=f"Validation errors: {errors}")
+
+    def test_unreachable_target(self):
+        # We can mock HTTP client to timeout and check if DISC-00 is produced.
+        class TimeoutMockClient:
+            def fetch(self, url, *args, **kwargs):
+                from shared.http_client import HTTPResponse
+                return HTTPResponse(url=url, final_url=url, status_code=0, is_success=False, headers={}, body="", error="Timeout")
+            def get(self, url, *args, **kwargs):
+                from shared.http_client import HTTPResponse
+                return HTTPResponse(url=url, final_url=url, status_code=0, is_success=False, headers={}, body="", error="Timeout")
+
+        orch = Orchestrator(http_client=TimeoutMockClient())
+        result = orch.run_audit("https://unreachable.local")
+
+        findings = result.get("findings", [])
+        disc_00 = [f for f in findings if "DISC-00-UNREACHABLE" in f["id"]]
+        self.assertTrue(len(disc_00) > 0, msg="Expected DISC-00-UNREACHABLE finding on timeout")
+        self.assertEqual(disc_00[0]["severity"], "CRITICAL")
+        self.assertTrue(result.get("ai_readiness_score") < 100)
+
 
 if __name__ == "__main__":
     unittest.main()

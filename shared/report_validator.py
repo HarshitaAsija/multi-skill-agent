@@ -35,6 +35,10 @@ def validate_report(report: Dict[str, Any]) -> Tuple[bool, List[str]]:
     if not isinstance(report.get("audited_at"), str) or not report["audited_at"]:
         errors.append("Missing or invalid 'audited_at' field (must be ISO 8601 string)")
 
+    score = report.get("ai_readiness_score")
+    if not isinstance(score, int) or not (0 <= score <= 100):
+        errors.append("Missing or invalid 'ai_readiness_score' field (must be an integer between 0 and 100)")
+
     summary = report.get("summary")
     if not isinstance(summary, dict):
         errors.append("Missing or invalid 'summary' field (must be an object)")

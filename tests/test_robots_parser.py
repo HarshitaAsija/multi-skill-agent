@@ -69,5 +69,21 @@ class TestRobotsParser(unittest.TestCase):
         self.assertFalse(res.is_path_allowed("/admin/dashboard", user_agent="*"))
         self.assertTrue(res.is_path_allowed("/public/about", user_agent="*"))
 
+    def test_empty_robots_body(self):
+        """Edge case: HTTP 200 but empty body should treat all as allowed."""
+        parser = RobotsParser()
+        rules, sitemaps = parser._parse("")
+        res = RobotsParseResult(
+            robots_url="https://example.com/robots.txt",
+            http_status=200,
+            raw_content="",
+            is_accessible=True,
+            rules=rules,
+            sitemap_urls=sitemaps
+        )
+        self.assertEqual(len(res.get_blocked_ai_agents()), 0)
+        self.assertTrue(res.is_path_allowed("/admin", user_agent="*"))
+        self.assertTrue(res.is_path_allowed("/", user_agent="*"))
+
 if __name__ == "__main__":
     unittest.main()

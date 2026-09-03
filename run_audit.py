@@ -79,6 +79,7 @@ def main():
 def print_summary(report: dict) -> None:
     site = report.get("site", "Unknown")
     audited_at = report.get("audited_at", "")
+    score = report.get("ai_readiness_score", 100)
     summary = report.get("summary", {})
     findings = report.get("findings", [])
     recs = report.get("proactive_recommendations", [])
@@ -88,6 +89,7 @@ def print_summary(report: dict) -> None:
     print("=" * 70)
     print(f"Target Site:   {site}")
     print(f"Audited At:    {audited_at}")
+    print(f"AI Readiness:  {score} / 100")
     print(f"Total Issues:  {summary.get('total_findings', 0)} "
           f"(CRITICAL: {summary.get('critical', 0)} | "
           f"HIGH: {summary.get('high', 0)} | "

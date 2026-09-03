@@ -71,5 +71,20 @@ class TestPageAnalyser(unittest.TestCase):
         self.assertIn("Start Free Trial", data.button_cta_labels)
         self.assertIn("© 2026 Acme Corp", data.footer_text)
 
+    def test_empty_og_image_content(self):
+        """Edge case: og:image with empty content='' should not populate open_graph data."""
+        html = '''
+        <html><head>
+            <meta property="og:title" content="Hello">
+            <meta property="og:image" content="">
+            <meta property="og:description" content="   ">
+        </head><body></body></html>
+        '''
+        analyser = PageAnalyser()
+        data = analyser.analyse("https://test.com", html)
+        self.assertEqual(data.open_graph.get("og:title"), "Hello")
+        self.assertNotIn("og:image", data.open_graph)
+        self.assertNotIn("og:description", data.open_graph)
+
 if __name__ == "__main__":
     unittest.main()

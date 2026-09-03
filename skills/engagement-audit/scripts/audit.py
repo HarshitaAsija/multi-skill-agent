@@ -60,6 +60,9 @@ class EngagementAuditSkill:
             self._check_cta_label_ambiguity(pdata, findings)
             self._check_form_friction(pdata, findings)
 
+        # ENG-05: Check globally if any page has FAQ/Speakable schema
+        self._check_faq_schema_presence(page_data_map, findings)
+
         return {"findings": findings}
 
     # ------------------------------------------------------------------ #
@@ -216,3 +219,55 @@ class EngagementAuditSkill:
                 )
             )
             findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  ENG-05: FAQPage / Speakable Schema for AI Answer Eligibility      #
+    # ------------------------------------------------------------------ #
+    def _check_faq_schema_presence(
+        self,
+        page_data_map: Dict[str, PageData],
+        findings: List[Finding]
+    ) -> None:
+        """
+        Checks if any commercial or support page uses FAQPage or Speakable
+        JSON-LD schema — the primary mechanism for content to appear in
+        AI-generated answers and voice search results.
+        """
+        # Check if any page already has FAQ schema
+        for pdata in page_data_map.values():
+            if pdata.has_faq_schema:
+                return  # Site already uses it somewhere, no finding needed
+
+        # No FAQ schema found on any page — flag it
+        affected = list(page_data_map.keys())
+        sample_url = affected[0] if affected else "/"
+        evidence = EvidenceBuilder.build(
+            source_url=sample_url,
+            observation=f"No FAQPage, Speakable, QAPage, or HowTo JSON-LD schema detected across {len(affected)} crawled page(s).",
+            detection_method="JSON-LD Schema Type Inventory",
+            relevance="FAQPage and Speakable JSON-LD schema are the primary mechanisms by which content is directly ingested into AI-generated answers (Google SGE, Bing Copilot, ChatGPT Search) and voice assistant responses.",
+            confidence=0.90,
+            extra_data={"pages_checked": len(affected)}
+        )
+        finding = Finding(
+            id="ENG-05-MISSING-FAQ-SPEAKABLE-SCHEMA",
+            title="No FAQPage / Speakable Schema for AI Answer Engine Eligibility",
+            category=CATEGORY_ONSITE_ENGAGEMENT,
+            severity=SEVERITY_MEDIUM,
+            confidence=0.90,
+            evidence=evidence,
+            rationale="Sites without FAQPage or Speakable schema miss direct eligibility for AI-generated answer snippets. Competitors who implement it get their content surfaced verbatim in AI answers.",
+            affected_urls=affected[:5],
+            suggested_action=SuggestedAction(
+                summary="Add FAQPage JSON-LD schema to commercial, pricing, or support pages with common buyer questions.",
+                priority=2,
+                remediation_steps=[
+                    "Identify the 5-10 most common pre-purchase questions your customers ask.",
+                    "Add a <script type='application/ld+json'> block with @type: FAQPage and a mainEntity array of Questions and Answers.",
+                    "Validate the schema using Google's Rich Results Test."
+                ],
+                expected_impact="Makes content eligible for direct AI-generated answer snippets and voice search results, increasing brand visibility without requiring a click.",
+                effort_estimate="LOW"
+            )
+        )
+        findings.append(finding)

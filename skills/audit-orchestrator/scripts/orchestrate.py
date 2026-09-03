@@ -115,7 +115,8 @@ class Orchestrator:
         result = AuditResult(
             site=normalized_url,
             findings=final_findings,
-            proactive_recommendations=proactive_recommendations
+            proactive_recommendations=proactive_recommendations,
+            ai_readiness_score=self._compute_ai_readiness_score(final_findings)
         )
 
         result_dict = result.to_dict()
@@ -228,3 +229,27 @@ class Orchestrator:
             findings=[]
         )
         return result.to_dict()
+
+    def _compute_ai_readiness_score(self, findings: List[Finding]) -> int:
+        """
+        Computes a 0–100 AI Readiness Score weighted by severity.
+
+        Scoring deductions per finding:
+          CRITICAL: -25 pts  (blocks all machine discovery)
+          HIGH:     -15 pts  (major discoverability or accessibility gap)
+          MEDIUM:   -7 pts   (contextual extractability issue)
+          LOW:      -3 pts   (best-practice omission)
+
+        Score is floored at 0.
+        """
+        DEDUCTIONS = {
+            "CRITICAL": 25,
+            "HIGH": 15,
+            "MEDIUM": 7,
+            "LOW": 3,
+        }
+        score = 100
+        for finding in findings:
+            deduction = DEDUCTIONS.get(finding.severity.upper(), 0)
+            score -= deduction
+        return max(0, score)

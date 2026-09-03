@@ -40,5 +40,11 @@ class TestSitemapParser(unittest.TestCase):
         self.assertEqual(entries[1].url, "https://example.com/pricing")
         self.assertEqual(entries[1].priority, 0.8)
 
+    def test_malformed_xml_fallback(self):
+        """Edge case: Malformed XML should gracefully return empty entries."""
+        parser = SitemapParser()
+        entries = parser._parse_xml("<?xml version='1.0'?><urlset><url><loc>no-close-tag", root_url="https://example.com", current_url="https://example.com/sitemap.xml", depth=0)
+        self.assertEqual(len(entries), 0)
+
 if __name__ == "__main__":
     unittest.main()

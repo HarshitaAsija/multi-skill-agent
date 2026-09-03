@@ -49,6 +49,7 @@ class FreshnessCorroborationSkill:
         self._check_copyright_recency(page_data_map, findings)
         self._check_cross_page_brand_identity(page_data_map, findings)
         self._check_article_freshness(page_data_map, findings)
+        self._check_title_brand_consistency(page_data_map, findings)
 
         return {"findings": findings}
 
@@ -232,6 +233,71 @@ class FreshnessCorroborationSkill:
                         "Add or update dateModified JSON-LD metadata when content is refreshed."
                     ],
                     expected_impact="Boosts AI search recency score and citation likelihood.",
+                    effort_estimate="LOW"
+                )
+            )
+            findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  BRAND-01: Page Title Brand Suffix Consistency                      #
+    # ------------------------------------------------------------------ #
+    def _check_title_brand_consistency(
+        self,
+        page_data_map: Dict[str, PageData],
+        findings: List[Finding]
+    ) -> None:
+        """
+        Checks whether <title> tags consistently include a brand suffix
+        (e.g. 'Pricing | Acme Corp') across subpages. Inconsistent or missing
+        brand suffixes weaken entity signal coherence for AI indexers.
+        """
+        brand_suffixes: Dict[str, int] = {}
+        pages_without_suffix: List[str] = []
+
+        for url, pdata in page_data_map.items():
+            if pdata.page_title_brand:
+                brand_suffixes[pdata.page_title_brand] = brand_suffixes.get(pdata.page_title_brand, 0) + 1
+            elif pdata.title:
+                pages_without_suffix.append(url)
+
+        if len(page_data_map) < 2:
+            return  # Need at least 2 pages to compare consistency
+
+        # Flag if more than half the pages are missing a brand suffix in their title
+        if len(pages_without_suffix) > len(page_data_map) / 2:
+            sample_url = pages_without_suffix[0]
+            sample_title = page_data_map[sample_url].title or "(no title)"
+            evidence = EvidenceBuilder.build(
+                source_url=sample_url,
+                observation=(
+                    f"{len(pages_without_suffix)} of {len(page_data_map)} crawled pages have titles without "
+                    f"a brand suffix separator (e.g. ' | Brand'). Sample: '{sample_title}'."
+                ),
+                detection_method="Page Title Brand Suffix Pattern Analyzer",
+                relevance="Consistent brand suffixes in page titles are a primary entity signal used by AI search engines to associate subpages with their parent organization during indexing.",
+                confidence=0.85,
+                extra_data={
+                    "pages_without_brand_suffix": len(pages_without_suffix),
+                    "detected_brand_names": list(brand_suffixes.keys())
+                }
+            )
+            finding = Finding(
+                id="BRAND-01-INCONSISTENT-TITLE-BRAND-SUFFIX",
+                title="Inconsistent Brand Suffix in Page Title Tags",
+                category=CATEGORY_FACTUAL_FRESHNESS,
+                severity=SEVERITY_LOW,
+                confidence=0.85,
+                evidence=evidence,
+                rationale="AI indexers associate content with its parent brand through consistent title patterns. Missing brand suffixes on subpages weaken entity coherence and may reduce brand attribution in AI citations.",
+                affected_urls=pages_without_suffix[:10],
+                suggested_action=SuggestedAction(
+                    summary="Standardize all page titles with a consistent brand suffix (e.g. 'Page Name | YourBrand').",
+                    priority=3,
+                    remediation_steps=[
+                        "Update page <title> tags to follow the pattern: 'Page Topic | BrandName'.",
+                        "Configure your CMS title template to append ' | YourBrand' globally."
+                    ],
+                    expected_impact="Strengthens brand entity coherence and improves multi-page attribution in AI search results.",
                     effort_estimate="LOW"
                 )
             )
