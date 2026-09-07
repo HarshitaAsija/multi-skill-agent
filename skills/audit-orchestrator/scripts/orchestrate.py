@@ -19,6 +19,7 @@ from shared.config import (
 )
 from shared.logging_utils import get_logger
 from shared.report_validator import validate_report
+from shared.market_intelligence import MarketIntelligenceEngine
 from skills import load_skill_module
 
 logger = get_logger("orchestrator")
@@ -48,6 +49,7 @@ class Orchestrator:
         self.crawl_skill = crawl_skill or CrawlRenderAuditSkill(http_client=self.http_client)
         self.freshness_skill = freshness_skill or FreshnessCorroborationSkill()
         self.engagement_skill = engagement_skill or EngagementAuditSkill()
+        self.market_intel_engine = MarketIntelligenceEngine()
 
     def run_audit(
         self,
@@ -111,12 +113,24 @@ class Orchestrator:
             normalized_url, final_findings
         )
 
-        # 7. Construct Final AuditResult Object
+        # 7. Run AI Answerability & Market Intelligence Engine
+        market_intel_report = None
+        if page_data_map:
+            try:
+                market_intel_report = self.market_intel_engine.analyze(
+                    root_url=normalized_url,
+                    page_data_map=page_data_map
+                ).to_dict()
+            except Exception as e:
+                logger.warning(f"Market intelligence analysis encountered an issue: {e}")
+
+        # 8. Construct Final AuditResult Object
         result = AuditResult(
             site=normalized_url,
             findings=final_findings,
             proactive_recommendations=proactive_recommendations,
-            ai_readiness_score=self._compute_ai_readiness_score(final_findings)
+            ai_readiness_score=self._compute_ai_readiness_score(final_findings),
+            market_intelligence=market_intel_report
         )
 
         result_dict = result.to_dict()

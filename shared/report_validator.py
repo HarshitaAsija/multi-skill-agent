@@ -74,6 +74,13 @@ def validate_report(report: Dict[str, Any]) -> Tuple[bool, List[str]]:
             rec_errors = _validate_recommendation(rec, i)
             errors.extend(rec_errors)
 
+    if "market_intelligence" in report:
+        mi = report["market_intelligence"]
+        if not isinstance(mi, dict):
+            errors.append("'market_intelligence' field must be an object")
+        else:
+            errors.extend(_validate_market_intelligence(mi))
+
     is_valid = len(errors) == 0
     return is_valid, errors
 
@@ -141,5 +148,30 @@ def _validate_recommendation(rec: Dict[str, Any], index: int) -> List[str]:
 
     if not isinstance(rec.get("suggested_implementation"), str) or not rec["suggested_implementation"]:
         errors.append(f"{prefix}.suggested_implementation is missing or empty")
+
+    return errors
+
+
+def _validate_market_intelligence(mi: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+
+    if not isinstance(mi.get("detected_industry"), str) or not mi["detected_industry"]:
+        errors.append("market_intelligence.detected_industry is missing or empty")
+
+    cov = mi.get("market_question_coverage_pct")
+    if not isinstance(cov, int) or not (0 <= cov <= 100):
+        errors.append("market_intelligence.market_question_coverage_pct must be an integer between 0 and 100")
+
+    if not isinstance(mi.get("questions"), list):
+        errors.append("market_intelligence.questions must be an array")
+    else:
+        for idx, q in enumerate(mi["questions"]):
+            if not isinstance(q.get("question"), str):
+                errors.append(f"market_intelligence.questions[{idx}].question must be a string")
+            if q.get("status") not in {"ANSWERABLE", "PARTIAL", "NOT_ANSWERABLE"}:
+                errors.append(f"market_intelligence.questions[{idx}].status is invalid")
+
+    if not isinstance(mi.get("roadmap"), list):
+        errors.append("market_intelligence.roadmap must be an array")
 
     return errors

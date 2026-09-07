@@ -85,7 +85,7 @@ def print_summary(report: dict) -> None:
     recs = report.get("proactive_recommendations", [])
 
     print("\n" + "=" * 70)
-    print("  AGENT SKILL MARKETPLACE — AUDIT EXECUTIVE SUMMARY")
+    print("  AGENT SKILL MARKETPLACE - AUDIT EXECUTIVE SUMMARY")
     print("=" * 70)
     print(f"Target Site:   {site}")
     print(f"Audited At:    {audited_at}")
@@ -117,6 +117,40 @@ def print_summary(report: dict) -> None:
         print("-" * 70)
         for r in recs:
             print(f"  * {r.get('title')}: {r.get('suggested_implementation')}")
+
+    mi = report.get("market_intelligence")
+    if mi:
+        print("\n" + "=" * 70)
+        print("  AI ANSWERABILITY & MARKET INTELLIGENCE REPORT")
+        print("=" * 70)
+        print(f"Detected Industry:        {mi.get('industry_label', 'Unknown')}")
+        print(f"Market Question Coverage: {mi.get('market_question_coverage_pct', 0)}% "
+              f"({mi.get('clear_count', 0)} Answerable | "
+              f"{mi.get('partial_count', 0)} Partial | "
+              f"{mi.get('missing_count', 0)} Missing)")
+        print("-" * 70)
+        print("  HIGH-INTENT QUESTIONS CHECKED:")
+        status_icons = {
+            "ANSWERABLE": "[OK]",
+            "PARTIAL": "[PARTIAL]",
+            "NOT_ANSWERABLE": "[GAP]",
+        }
+        for q in mi.get("questions", []):
+            st = status_icons.get(q.get("status"), "[?]")
+            print(f"  {st:<10} {q.get('question')}")
+            if q.get("status") != "ANSWERABLE":
+                print(f"             Simulated AI Query: \"{q.get('simulated_prompt')}\"")
+                print(f"             AI Risk: {q.get('ai_risk')}")
+
+        roadmap = mi.get("roadmap", [])
+        if roadmap:
+            print("\n" + "-" * 70)
+            print("  SMART GROWTH ROADMAP (PRIORITIZED ACTION PLAN)")
+            print("-" * 70)
+            for item in roadmap:
+                print(f"  Priority {item.get('priority')} [{item.get('impact')} Impact | {item.get('effort')} Effort]")
+                print(f"    Action: {item.get('action_title')}")
+                print(f"    Why:    {item.get('why')}")
 
     print("\n" + "=" * 70 + "\n")
 
