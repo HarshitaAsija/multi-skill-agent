@@ -34,5 +34,43 @@ class TestExtractabilityChecker(unittest.TestCase):
         self.assertTrue(len(skip_findings) > 0)
         self.assertEqual(skip_findings[0].severity, "MEDIUM")
 
+    def test_subpage_missing_breadcrumb_schema(self):
+        analyser = PageAnalyser()
+        html = """<!DOCTYPE html>
+<html>
+<head><title>Product Features</title></head>
+<body>
+    <h1>Product Features</h1>
+    <p>Detailed capabilities and specifications.</p>
+</body>
+</html>"""
+        pdata = analyser.analyse("https://example.com/products/ai-suite", html)
+        checker = ExtractabilityChecker()
+        findings = checker.check_all({"https://example.com/products/ai-suite": pdata})
+
+        breadcrumb_findings = [f for f in findings if "KNOW-06-MISSING-BREADCRUMB-SCHEMA" in f.id]
+        self.assertTrue(len(breadcrumb_findings) > 0)
+        self.assertEqual(breadcrumb_findings[0].severity, "LOW")
+
+    def test_blog_post_missing_article_schema(self):
+        analyser = PageAnalyser()
+        html = """<!DOCTYPE html>
+<html>
+<head><title>Guide to RAG Architectures</title></head>
+<body>
+    <h1>Guide to RAG Architectures</h1>
+    <p>Published on September 1, 2026 by Tech Lead.</p>
+</body>
+</html>"""
+        pdata = analyser.analyse("https://example.com/blog/guide-to-rag", html)
+        checker = ExtractabilityChecker()
+        findings = checker.check_all({"https://example.com/blog/guide-to-rag": pdata})
+
+        article_findings = [f for f in findings if "KNOW-07-MISSING-ARTICLE-SCHEMA" in f.id]
+        self.assertTrue(len(article_findings) > 0)
+        self.assertEqual(article_findings[0].severity, "MEDIUM")
+
+
 if __name__ == "__main__":
     unittest.main()
+

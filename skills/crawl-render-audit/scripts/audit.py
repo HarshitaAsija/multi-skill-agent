@@ -98,6 +98,7 @@ class CrawlRenderAuditSkill:
             self._check_canonical_integrity(pdata, findings)
             self._check_client_side_hydration_lock(pdata, cp.response.body, findings)
             self._check_social_card_metadata(pdata, findings)
+            self._check_hreflang_integrity(pdata, findings)
 
         # 5. Check /llms.txt availability (DISC-08) — once per domain
         self._check_llms_txt(request.url, findings)
@@ -548,3 +549,49 @@ class CrawlRenderAuditSkill:
             )
         )
         findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  DISC-09: Multilingual Hreflang x-default Fallback Check            #
+    # ------------------------------------------------------------------ #
+    def _check_hreflang_integrity(self, pdata: PageData, findings: List[Finding]) -> None:
+        """
+        Validates multilingual hreflang declarations.
+        If hreflang tags exist, checks that an 'x-default' fallback is specified.
+        """
+        if not pdata.hreflang_tags:
+            return
+
+        has_x_default = any(
+            tag.get("hreflang", "").strip().lower() == "x-default"
+            for tag in pdata.hreflang_tags
+        )
+        if not has_x_default:
+            evidence = EvidenceBuilder.build(
+                source_url=pdata.url,
+                observation=f"Page specifies {len(pdata.hreflang_tags)} hreflang alternate links but lacks an 'x-default' fallback directive.",
+                detection_method="Hreflang Alternate Link Inspector",
+                relevance="The 'x-default' hreflang attribute directs global AI crawlers and users from unrepresented locales to the default international version of the page.",
+                confidence=0.90,
+                extra_data={"declared_hreflang": [t.get("hreflang") for t in pdata.hreflang_tags]}
+            )
+            finding = Finding(
+                id=f"DISC-09-HREFLANG-MISSING-XDEFAULT-{pdata.url}",
+                title="Multilingual Hreflang Tags Missing 'x-default' Fallback Directive",
+                category=CATEGORY_AI_DISCOVERABILITY,
+                severity=SEVERITY_LOW,
+                confidence=0.90,
+                evidence=evidence,
+                rationale="Without an x-default hreflang declaration, AI search engines operating in default locales may unpredictably index a regional translation instead of the canonical global version.",
+                affected_urls=[pdata.url],
+                suggested_action=SuggestedAction(
+                    summary="Add an x-default hreflang tag pointing to the default international page version.",
+                    priority=4,
+                    remediation_steps=[
+                        "Add <link rel=\"alternate\" hreflang=\"x-default\" href=\"https://yourdomain.com/canonical-page\"> to <head>.",
+                        "Ensure all localized language alternates cross-reference the x-default URL."
+                    ],
+                    expected_impact="Prevents AI search engines from indexing the wrong regional variant for global searchers.",
+                    effort_estimate="LOW"
+                )
+            )
+            findings.append(finding)

@@ -300,5 +300,45 @@ class TestReportSchemaValidation(unittest.TestCase):
         self.assertTrue(len(errors) > 0)
 
 
+class TestHreflangIntegrity(unittest.TestCase):
+    """Multilingual pages without x-default hreflang should trigger DISC-09."""
+
+    def test_missing_xdefault_hreflang_trigger(self):
+        html = """<!DOCTYPE html>
+        <html><head>
+            <title>International Portal</title>
+            <link rel="alternate" hreflang="es" href="https://example.com/es/">
+            <link rel="alternate" hreflang="fr" href="https://example.com/fr/">
+        </head><body><h1>Bienvenue</h1></body></html>"""
+        analyser = PageAnalyser()
+        pdata = analyser.analyse("https://example.com/", html)
+
+        skill = CrawlRenderAuditSkill()
+        findings = []
+        skill._check_hreflang_integrity(pdata, findings)
+
+        hreflang_findings = [f for f in findings if "DISC-09-HREFLANG-MISSING-XDEFAULT" in f.id]
+        self.assertTrue(len(hreflang_findings) > 0)
+        self.assertEqual(hreflang_findings[0].severity, "LOW")
+
+    def test_xdefault_hreflang_present_passes(self):
+        html = """<!DOCTYPE html>
+        <html><head>
+            <title>International Portal</title>
+            <link rel="alternate" hreflang="es" href="https://example.com/es/">
+            <link rel="alternate" hreflang="x-default" href="https://example.com/">
+        </head><body><h1>Welcome</h1></body></html>"""
+        analyser = PageAnalyser()
+        pdata = analyser.analyse("https://example.com/", html)
+
+        skill = CrawlRenderAuditSkill()
+        findings = []
+        skill._check_hreflang_integrity(pdata, findings)
+
+        hreflang_findings = [f for f in findings if "DISC-09-HREFLANG-MISSING-XDEFAULT" in f.id]
+        self.assertEqual(len(hreflang_findings), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
+

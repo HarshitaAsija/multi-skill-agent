@@ -41,6 +41,8 @@ class ExtractabilityChecker:
             self._check_context_gated_schema(pdata, findings)
             self._check_tabular_data_structure(pdata, findings)
             self._check_image_alt_coverage(pdata, findings)
+            self._check_breadcrumb_schema(pdata, findings)
+            self._check_article_schema(pdata, findings)
         return findings
 
     # ------------------------------------------------------------------ #
@@ -249,6 +251,94 @@ class ExtractabilityChecker:
                             "Use empty alt=\"\" only for decorative background graphics."
                         ],
                         expected_impact="Makes visual diagram facts searchable for text-only AI models.",
+                        effort_estimate="LOW"
+                    )
+                )
+                findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  KNOW-06: Subpage BreadcrumbList Schema.org Taxonomy                #
+    # ------------------------------------------------------------------ #
+    def _check_breadcrumb_schema(self, pdata: PageData, findings: List[Finding]) -> None:
+        """
+        Ensures subpages provide BreadcrumbList structured data or semantic breadcrumbs,
+        establishing document hierarchy for AI search engines.
+        """
+        # Only check on inner/subpages (not root homepage)
+        is_homepage = pdata.url.rstrip("/").count("/") <= 2 or "homepage" in pdata.url.lower()
+        if is_homepage:
+            return
+
+        types = set(pdata.json_ld_types)
+        if "BreadcrumbList" not in types and not pdata.has_breadcrumb:
+            evidence = EvidenceBuilder.build(
+                source_url=pdata.url,
+                observation="Subpage lacks BreadcrumbList Schema.org JSON-LD and semantic breadcrumb navigation.",
+                detection_method="Context-Gated Hierarchy & Schema Parser",
+                relevance="BreadcrumbList structured data provides AI search engines (Perplexity, SearchGPT, Google AI Overviews) with explicit parent-child document taxonomy, anchoring the page's topical hierarchy.",
+                confidence=0.85,
+                extra_data={"url_path": pdata.url}
+            )
+            finding = Finding(
+                id=f"KNOW-06-MISSING-BREADCRUMB-SCHEMA-{pdata.url}",
+                title="Missing BreadcrumbList Schema.org Structured Data on Subpage",
+                category=CATEGORY_MACHINE_READINESS,
+                severity=SEVERITY_LOW,
+                confidence=0.85,
+                evidence=evidence,
+                rationale="Without BreadcrumbList markup, LLM web crawlers cannot reliably infer structural site taxonomy and parental relationship to ancestor pages.",
+                affected_urls=[pdata.url],
+                suggested_action=SuggestedAction(
+                    summary="Add Schema.org BreadcrumbList JSON-LD to establish parent-child page taxonomy.",
+                    priority=4,
+                    remediation_steps=[
+                        "Inject <script type=\"application/ld+json\"> with @type: BreadcrumbList into <head>.",
+                        "Define itemListElement array with ListItem entries denoting Home -> Category -> Current Page hierarchy."
+                    ],
+                    expected_impact="Enhances AI topical context modeling and rich breadcrumb display in search citations.",
+                    effort_estimate="LOW"
+                )
+            )
+            findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  KNOW-07: Editorial Article / BlogPosting Schema                    #
+    # ------------------------------------------------------------------ #
+    def _check_article_schema(self, pdata: PageData, findings: List[Finding]) -> None:
+        """
+        Ensures editorial, blog, and news pages declare Article or BlogPosting JSON-LD.
+        """
+        editorial_markers = ["/blog/", "/article/", "/news/", "/posts/", "/guides/", "/post/"]
+        url_lower = pdata.url.lower()
+        if any(marker in url_lower for marker in editorial_markers):
+            types = set(pdata.json_ld_types)
+            article_types = {"Article", "BlogPosting", "NewsArticle", "TechArticle"}
+            if not types.intersection(article_types):
+                evidence = EvidenceBuilder.build(
+                    source_url=pdata.url,
+                    observation="Editorial/content page lacks Article or BlogPosting Schema.org JSON-LD markup.",
+                    detection_method="Context-Gated Editorial Schema Parser",
+                    relevance="AI search engines (Perplexity, SearchGPT) extract headline, author, and datePublished from Article JSON-LD to cite content authoritatively and establish E-E-A-T source credibility.",
+                    confidence=0.90,
+                    extra_data={"found_schema_types": list(types)}
+                )
+                finding = Finding(
+                    id=f"KNOW-07-MISSING-ARTICLE-SCHEMA-{pdata.url}",
+                    title="Missing Article / BlogPosting Schema.org Markup on Editorial Page",
+                    category=CATEGORY_MACHINE_READINESS,
+                    severity=SEVERITY_MEDIUM,
+                    confidence=0.90,
+                    evidence=evidence,
+                    rationale="AI citation engines require structured Article or BlogPosting metadata to attribute facts, authors, and publication dates accurately.",
+                    affected_urls=[pdata.url],
+                    suggested_action=SuggestedAction(
+                        summary="Add Schema.org Article or BlogPosting JSON-LD to editorial content pages.",
+                        priority=3,
+                        remediation_steps=[
+                            "Add <script type=\"application/ld+json\"> with @type: BlogPosting or Article.",
+                            "Include headline, author (@type: Person), datePublished, dateModified, and publisher."
+                        ],
+                        expected_impact="Enables authoritative citation and author attribution by AI search engines.",
                         effort_estimate="LOW"
                     )
                 )

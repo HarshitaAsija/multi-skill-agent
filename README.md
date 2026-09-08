@@ -2,7 +2,7 @@
 
 [![Adobe University Hackathon 2026](https://img.shields.io/badge/Adobe%20Hackathon-Round%203%20Submission-FF0000.svg)](https://github.com/HarshitaAsija/multi-skill-agent)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests Passing](https://img.shields.io/badge/Tests-52%20Passed-brightgreen.svg)](tests/)
+[![Tests Passing](https://img.shields.io/badge/Tests-60%20Passed-brightgreen.svg)](tests/)
 [![Package Size](https://img.shields.io/badge/Package%20Size-~93%20KB-success.svg)](marketplace.json)
 
 ## Overview
@@ -66,6 +66,10 @@ from your current content?          for this type of business?
 - **Software & Technology (SaaS)**: Subscription pricing tiers, free trial/demo availability, platform integrations, public API docs, security & compliance (SOC2/GDPR).
 - **Healthcare & Medical**: Medical specialties, online appointment booking, accepted insurance, clinic hours & accessibility, doctor board certifications.
 - **Education & Academy**: Academic degree programs, admission requirements & deadlines, tuition & financial aid, institutional accreditation, online/hybrid classes.
+- **Real Estate & Property**: Available listings & units, geographic coverage areas, tour & viewing scheduling, pricing & mortgage options, broker licensing.
+- **Legal & Law Services**: Practice areas & specialties, confidential consultation intake, fee structures (contingency/hourly), state bar admissions, verdicts & settlements.
+- **Sports, Fitness & Gym**: Training equipment & amenities, group fitness schedule, membership pricing & trial passes, operating hours, certified trainer credentials.
+- **Food Delivery & Cloud Kitchen**: Delivery coverage radius & postal codes, delivery ETA & fees, online ordering & live tracking, packaging safety, missing item resolution.
 - **General Business & Services (Universal Fallback)**: Core service offerings, target audience personas, quote request channels, geographic service areas, client testimonials & case studies.
 
 ---
@@ -114,7 +118,7 @@ python -m unittest discover tests
 
 Expected output:
 ```
-Ran 52 tests in ~1.2s
+Ran 60 tests in ~1.5s
 OK
 ```
 
@@ -125,10 +129,10 @@ python scripts/package_submission.py
 ```
 
 This automated validator:
-1. Executes all **52 unit tests** with zero failures.
+1. Executes all **60 unit tests** with zero failures.
 2. Validates `marketplace.json` schema and agentskills.io compliance for every `SKILL.md`.
 3. Creates a clean, compressed submission archive (`agent-skill-marketplace-submission.zip`).
-4. Verifies the archive size is strictly under 50 MB (~93 KB).
+4. Verifies the archive size is strictly under 50 MB (~95 KB).
 5. Unpacks the archive into an isolated temporary directory and confirms standalone CLI execution.
 
 ---
@@ -154,17 +158,20 @@ This automated validator:
 | **`DISC-00`** | `crawl-render-audit` | AI Discoverability | Target Domain Unreachable / DNS / Connection Timeout | CRITICAL |
 | **`DISC-01`** | `crawl-render-audit` | AI Discoverability | AI Scraper User-Agents Blocked in `robots.txt` (GPTBot, ClaudeBot, etc.) | HIGH |
 | **`DISC-02`** | `crawl-render-audit` | AI Discoverability | Missing or Unreachable XML Sitemap | MEDIUM |
-| **`DISC-03`** | `crawl-render-audit` | AI Discoverability | Dead / Broken Links Discovered (HTTP 4xx/5xx) | MEDIUM |
-| **`DISC-04`** | `crawl-render-audit` | AI Discoverability | Meta Robots AI Tag Restricting Indexation (`noindex`, `noai`) | HIGH |
+| **`DISC-03`** | `crawl-render-audit` | AI Discoverability | Sitemap Lacks Content Modification Timestamps (`<lastmod>`) | LOW |
+| **`DISC-04`** | `crawl-render-audit` | AI Discoverability | Meta Robots AI Tag Restricting Indexation (`noindex`) | HIGH |
 | **`DISC-05`** | `crawl-render-audit` | AI Discoverability | Missing or Malformed `<link rel="canonical">` Tag | LOW |
 | **`DISC-06`** | `crawl-render-audit` | AI Discoverability | Missing OpenGraph / Twitter Card Social Metadata | LOW |
 | **`DISC-07`** | `crawl-render-audit` | Machine Readiness | Client-Side Hydration Lock (Blank SPA Mount Container) | HIGH |
 | **`DISC-08`** | `crawl-render-audit` | AI Discoverability | Missing `/llms.txt` Machine-Readable Content Index | MEDIUM |
-| **`KNOW-01`** | `crawl-render-audit` | Machine Readiness | Missing or Multiple Top-Level `<H1>` Headings | LOW |
-| **`KNOW-02`** | `crawl-render-audit` | Machine Readiness | Missing Primary Organization / WebSite Schema.org JSON-LD | HIGH |
-| **`KNOW-03`** | `crawl-render-audit` | Machine Readiness | Heading Hierarchy Skips (e.g. H1 directly to H3/H4) | LOW |
-| **`KNOW-04`** | `crawl-render-audit` | Machine Readiness | Images Missing Meaningful `alt` Attribute Text | LOW |
+| **`DISC-09`** | `crawl-render-audit` | AI Discoverability | Multilingual Hreflang Tags Missing `x-default` Fallback Directive | LOW |
+| **`KNOW-01`** | `crawl-render-audit` | Machine Readiness | Missing Primary `<H1>` Heading or Broken Heading Hierarchy | MEDIUM |
+| **`KNOW-02`** | `crawl-render-audit` | Machine Readiness | Missing Context-Gated Schema.org JSON-LD (Organization, Product) | HIGH |
+| **`KNOW-03`** | `crawl-render-audit` | Machine Readiness | Comparative / Tabular Data in Unstructured Layout Markup | MEDIUM |
+| **`KNOW-04`** | `crawl-render-audit` | Machine Readiness | Key Information Trapped in Images (Missing Alt Text) | LOW |
 | **`KNOW-05`** | `crawl-render-audit` | Machine Readiness | Missing `sameAs` Entity Authority Links in Organization Schema | MEDIUM |
+| **`KNOW-06`** | `crawl-render-audit` | Machine Readiness | Missing `BreadcrumbList` Schema.org Structured Data on Subpage | LOW |
+| **`KNOW-07`** | `crawl-render-audit` | Machine Readiness | Missing `Article` / `BlogPosting` Schema.org Markup on Editorial Page | MEDIUM |
 | **`FRESH-01`** | `freshness-corroboration` | Factual Freshness | Outdated Copyright Year Detected in Footer Text | MEDIUM |
 | **`FRESH-02`** | `freshness-corroboration` | Factual Freshness | Stale Article Publication / Modification Timestamps | LOW |
 | **`FRESH-03`** | `freshness-corroboration` | Factual Freshness | Contradictory Year Signals Between Content and Footer | MEDIUM |
@@ -174,6 +181,7 @@ This automated validator:
 | **`ENG-03`** | `engagement-audit` | Onsite Engagement | Ambiguous Call-To-Action (CTA) Button Labels ("Click Here") | LOW |
 | **`ENG-04`** | `engagement-audit` | Onsite Engagement | Missing Breadcrumb Navigation on Deep Subpages | LOW |
 | **`ENG-05`** | `engagement-audit` | Onsite Engagement | No `FAQPage` or `Speakable` JSON-LD Schema for AI Answer Engines | MEDIUM |
+
 
 ---
 

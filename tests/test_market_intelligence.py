@@ -117,6 +117,91 @@ class TestMarketIntelligenceEngine(unittest.TestCase):
             if q.status != "ANSWERABLE":
                 self.assertTrue(len(q.ai_risk) > 10)
 
+    def test_real_estate_industry_detection_and_questions(self):
+        pages = {
+            "https://pinnacle-homes.com/": MockPageData(
+                title="Pinnacle Properties | Luxury Homes & Real Estate",
+                meta_description="Browse exclusive properties for sale, modern condos, and luxury homes.",
+                json_ld_types=["RealEstateAgent"],
+                button_cta_labels=["Schedule a Tour", "View Listings"],
+                footer_text="Licensed broker serving Downtown and Westside neighborhoods."
+            )
+        }
+        report = self.engine.analyze("https://pinnacle-homes.com", pages, brand_name="Pinnacle Properties")
+        self.assertEqual(report.detected_industry, "REAL_ESTATE")
+        self.assertEqual(report.industry_label, "Real Estate & Property")
+        self.assertEqual(report.questions_checked, 5)
+
+        q1 = next(q for q in report.questions if q.id == "REAL-Q1")
+        self.assertEqual(q1.status, "ANSWERABLE")
+
+        q3 = next(q for q in report.questions if q.id == "REAL-Q3")
+        self.assertEqual(q3.status, "ANSWERABLE")
+
+    def test_legal_industry_detection_and_questions(self):
+        pages = {
+            "https://sterling-law.com/": MockPageData(
+                title="Sterling & Associates | Premier Litigation & Legal Counsel",
+                meta_description="Experienced attorneys specializing in corporate law, litigation, and personal injury.",
+                json_ld_types=["LawFirm", "LegalService"],
+                button_cta_labels=["Free Case Evaluation", "Contact an Attorney"],
+                footer_text="Contingency fee representation. Admitted to practice before the State Bar."
+            )
+        }
+        report = self.engine.analyze("https://sterling-law.com", pages, brand_name="Sterling Law")
+        self.assertEqual(report.detected_industry, "LEGAL")
+        self.assertEqual(report.industry_label, "Legal & Law Services")
+        self.assertEqual(report.questions_checked, 5)
+
+        q1 = next(q for q in report.questions if q.id == "LEGL-Q1")
+        self.assertEqual(q1.status, "ANSWERABLE")
+
+        q2 = next(q for q in report.questions if q.id == "LEGL-Q2")
+        self.assertEqual(q2.status, "ANSWERABLE")
+
+    def test_sports_fitness_industry_detection_and_questions(self):
+        pages = {
+            "https://apex-gym.com/": MockPageData(
+                title="Apex Athletics | 24/7 Gym & Fitness Center",
+                meta_description="State-of-the-art gym equipment, cardio machines, free weights, and certified personal trainers.",
+                json_ld_types=["HealthClub", "ExerciseGym"],
+                button_cta_labels=["Free Day Pass", "Join Now"],
+                footer_text="Open 24/7. All personal trainers are NASM certified."
+            )
+        }
+        report = self.engine.analyze("https://apex-gym.com", pages, brand_name="Apex Gym")
+        self.assertEqual(report.detected_industry, "SPORTS_FITNESS")
+        self.assertEqual(report.industry_label, "Sports, Fitness & Gym")
+        self.assertEqual(report.questions_checked, 5)
+
+        q1 = next(q for q in report.questions if q.id == "SPRT-Q1")
+        self.assertEqual(q1.status, "ANSWERABLE")
+
+        q4 = next(q for q in report.questions if q.id == "SPRT-Q4")
+        self.assertEqual(q4.status, "ANSWERABLE")
+
+    def test_food_delivery_industry_detection_and_questions(self):
+        pages = {
+            "https://quickbites-delivery.com/": MockPageData(
+                title="QuickBites | Fast Gourmet Food Delivery",
+                meta_description="Online ordering with fast delivery, real-time courier tracking, and tamper-evident packaging.",
+                json_ld_types=["DeliveryChargeSpecification", "FoodEstablishment"],
+                button_cta_labels=["Order Online", "Track My Order"],
+                footer_text="Delivery fee $2.99 with free delivery over $30. 5 mile radius."
+            )
+        }
+        report = self.engine.analyze("https://quickbites-delivery.com", pages, brand_name="QuickBites")
+        self.assertEqual(report.detected_industry, "FOOD_DELIVERY")
+        self.assertEqual(report.industry_label, "Food Delivery & Cloud Kitchen")
+        self.assertEqual(report.questions_checked, 5)
+
+        q1 = next(q for q in report.questions if q.id == "FDEL-Q1")
+        self.assertEqual(q1.status, "ANSWERABLE")
+
+        q3 = next(q for q in report.questions if q.id == "FDEL-Q3")
+        self.assertEqual(q3.status, "ANSWERABLE")
+
 
 if __name__ == "__main__":
     unittest.main()
+
