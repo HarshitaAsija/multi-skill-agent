@@ -43,6 +43,7 @@ class ExtractabilityChecker:
             self._check_image_alt_coverage(pdata, findings)
             self._check_breadcrumb_schema(pdata, findings)
             self._check_article_schema(pdata, findings)
+            self._check_embedded_objects(pdata, findings)
         return findings
 
     # ------------------------------------------------------------------ #
@@ -343,3 +344,59 @@ class ExtractabilityChecker:
                     )
                 )
                 findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  KNOW-08: Facts Trapped in Non-Text Embedded Elements (Appendix C)  #
+    # ------------------------------------------------------------------ #
+    def _check_embedded_objects(self, pdata: PageData, findings: List[Finding]) -> None:
+        """
+        Detects if content or key facts are trapped inside non-textual embedded elements
+        (<iframe>, <object>, <embed>, PDF viewers) where AI text crawlers cannot parse them.
+        """
+        if pdata.embedded_objects_count == 0:
+            return
+
+        # Flag if page relies on embeds while having sparse plain text (< 120 words),
+        # or if embeds link directly to binary document types (.pdf) without HTML fallback
+        has_pdf_embed = any(".pdf" in s.lower() for s in pdata.embedded_object_sources)
+        is_sparse_embed = pdata.embedded_objects_count > 0 and pdata.word_count < 120
+
+        if has_pdf_embed or is_sparse_embed:
+            evidence = EvidenceBuilder.build(
+                source_url=pdata.url,
+                observation=(
+                    f"Page contains {pdata.embedded_objects_count} embedded object(s) "
+                    f"({'including PDF document embed' if has_pdf_embed else 'with sparse visible text: ' + str(pdata.word_count) + ' words'}). "
+                    f"Embedded sources: {pdata.embedded_object_sources[:3] or 'unspecified src'}."
+                ),
+                detection_method="DOM Non-Textual Embedded Element Scanner",
+                relevance="LLM web crawlers and text retrievers cannot parse cross-origin iframes, canvas layers, or binary embedded PDF viewers. Facts housed in non-textual embeds are completely excluded from AI assistant knowledge bases.",
+                confidence=0.90,
+                extra_data={
+                    "embedded_count": pdata.embedded_objects_count,
+                    "sources": pdata.embedded_object_sources[:5],
+                    "word_count": pdata.word_count
+                }
+            )
+            finding = Finding(
+                id=f"KNOW-08-FACTS-TRAPPED-IN-EMBED-{pdata.url}",
+                title="Key Information Trapped in Non-Textual Embedded Elements (Iframe / Object / PDF)",
+                category=CATEGORY_MACHINE_READINESS,
+                severity=SEVERITY_MEDIUM,
+                confidence=0.90,
+                evidence=evidence,
+                rationale="AI search assistants extract knowledge from semantic HTML text and structured data. Locking critical business facts inside embedded viewer plugins makes them invisible to machine crawlers.",
+                affected_urls=[pdata.url],
+                suggested_action=SuggestedAction(
+                    summary="Provide native HTML semantic text transcripts alongside embedded media.",
+                    priority=3,
+                    remediation_steps=[
+                        "Extract key facts, pricing tables, or catalog specifications into native HTML text elements.",
+                        "Provide downloadable transcript or summary text blocks beneath embedded viewer elements.",
+                        "Add Schema.org structured data (e.g., DigitalDocument or Product) representing the embedded content."
+                    ],
+                    expected_impact="Restores machine extractability and search citation eligibility for embedded facts.",
+                    effort_estimate="MEDIUM"
+                )
+            )
+            findings.append(finding)

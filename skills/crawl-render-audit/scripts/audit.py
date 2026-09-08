@@ -69,6 +69,8 @@ class CrawlRenderAuditSkill:
         self._check_sitemap_health(request.url, sitemap, findings)
 
         # 3. Execute Bounded Representative Crawl
+        self.crawler.max_pages = request.max_pages
+        self.crawler.max_depth = request.max_depth
         seed_urls = sitemap.get_high_priority_urls(min_priority=0.7)
         crawled_pages: List[CrawledPage] = self.crawler.crawl(
             root_url=request.url,
@@ -99,6 +101,7 @@ class CrawlRenderAuditSkill:
             self._check_client_side_hydration_lock(pdata, cp.response.body, findings)
             self._check_social_card_metadata(pdata, findings)
             self._check_hreflang_integrity(pdata, findings)
+            self._check_meta_description_quality(pdata, findings)
 
         # 5. Check /llms.txt availability (DISC-08) — once per domain
         self._check_llms_txt(request.url, findings)
@@ -595,3 +598,79 @@ class CrawlRenderAuditSkill:
                 )
             )
             findings.append(finding)
+
+    # ------------------------------------------------------------------ #
+    #  DISC-11: Suboptimal or Missing Snippet Summary Meta (Appendix F)   #
+    # ------------------------------------------------------------------ #
+    def _check_meta_description_quality(self, pdata: PageData, findings: List[Finding]) -> None:
+        """
+        Validates <meta name="description"> tag existence and length.
+        AI summarizers and search engines (SearchGPT, Perplexity) rely on this
+        summary snippet; missing or boilerplate-stuffed descriptions cause AI
+        assistants to drop key facts or synthesize low-accuracy filler.
+        """
+        # Only check on root homepage or key section landing pages
+        is_key_landing = pdata.url.rstrip("/").count("/") <= 3
+
+        if not pdata.meta_description:
+            if is_key_landing:
+                evidence = EvidenceBuilder.build(
+                    source_url=pdata.url,
+                    observation="Page lacks a <meta name=\"description\"> summary tag in HTML <head>.",
+                    detection_method="HTML Meta Tag Scanner",
+                    relevance="When AI search engines and inbox summarizers index or cite a page, they rely on the meta description as the primary concise summary. Missing meta descriptions force AI assistants to synthesize fallbacks from surrounding filler, often dropping the real substance.",
+                    confidence=0.95
+                )
+                finding = Finding(
+                    id=f"DISC-11-MISSING-META-DESCRIPTION-{pdata.url}",
+                    title="Missing Snippet Summary Metadata (<meta name=\"description\">)",
+                    category=CATEGORY_AI_DISCOVERABILITY,
+                    severity=SEVERITY_MEDIUM,
+                    confidence=0.95,
+                    evidence=evidence,
+                    rationale="Without an explicit meta description, AI search citations and summaries fall back to random DOM fragments, misrepresenting core brand value propositions.",
+                    affected_urls=[pdata.url],
+                    suggested_action=SuggestedAction(
+                        summary="Add an informative, fact-rich <meta name=\"description\"> tag (120-160 characters).",
+                        priority=3,
+                        remediation_steps=[
+                            "Craft a 120-160 character description stating the primary offering and core value proposition.",
+                            f"Inject <meta name=\"description\" content=\"...\"> into the <head> of {pdata.url}."
+                        ],
+                        expected_impact="Supplies AI search engines with an authoritative, concise summary snippet for direct citations.",
+                        effort_estimate="LOW"
+                    )
+                )
+                findings.append(finding)
+        else:
+            desc_len = len(pdata.meta_description)
+            if (desc_len < 40 or desc_len > 320) and is_key_landing:
+                evidence = EvidenceBuilder.build(
+                    source_url=pdata.url,
+                    observation=f"Meta description is suboptimal ({desc_len} characters): '{pdata.meta_description[:80]}...'. Optimal length is 120-160 characters.",
+                    detection_method="Meta Description Length & Density Analyzer",
+                    relevance="Oversized meta descriptions are truncated by AI answer snippets, while excessively short descriptions lack sufficient semantic density for AI topic retrieval.",
+                    confidence=0.85,
+                    extra_data={"description_length": desc_len}
+                )
+                finding = Finding(
+                    id=f"DISC-11-SUBOPTIMAL-META-DESCRIPTION-{pdata.url}",
+                    title="Suboptimal Snippet Summary Metadata Length",
+                    category=CATEGORY_AI_DISCOVERABILITY,
+                    severity=SEVERITY_LOW,
+                    confidence=0.85,
+                    evidence=evidence,
+                    rationale="Meta descriptions under 40 or over 320 characters degrade snippet extraction quality in conversational search engines.",
+                    affected_urls=[pdata.url],
+                    suggested_action=SuggestedAction(
+                        summary="Calibrate meta description length to 120-160 characters with core brand keywords.",
+                        priority=4,
+                        remediation_steps=[
+                            "Revise the meta description content to between 120 and 160 characters.",
+                            "Focus on active verbs and concrete product/service differentiators."
+                        ],
+                        expected_impact="Prevents snippet truncation in AI citation cards and search overviews.",
+                        effort_estimate="LOW"
+                    )
+                )
+                findings.append(finding)

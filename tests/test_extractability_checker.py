@@ -70,6 +70,24 @@ class TestExtractabilityChecker(unittest.TestCase):
         self.assertTrue(len(article_findings) > 0)
         self.assertEqual(article_findings[0].severity, "MEDIUM")
 
+    def test_facts_trapped_in_embedded_objects(self):
+        analyser = PageAnalyser()
+        html = """<!DOCTYPE html>
+<html>
+<head><title>Product Catalog</title></head>
+<body>
+    <h1>Product Catalog</h1>
+    <iframe src="https://docs.google.com/viewer?url=https://example.com/catalog.pdf"></iframe>
+</body>
+</html>"""
+        pdata = analyser.analyse("https://example.com/catalog", html)
+        checker = ExtractabilityChecker()
+        findings = checker.check_all({"https://example.com/catalog": pdata})
+
+        embed_findings = [f for f in findings if "KNOW-08-FACTS-TRAPPED-IN-EMBED" in f.id]
+        self.assertTrue(len(embed_findings) > 0)
+        self.assertEqual(embed_findings[0].severity, "MEDIUM")
+
 
 if __name__ == "__main__":
     unittest.main()

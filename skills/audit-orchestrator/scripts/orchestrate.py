@@ -232,6 +232,27 @@ class Orchestrator:
                 category=CATEGORY_MACHINE_READINESS,
                 rationale="Conversational AI search engines directly ingest Question/Answer entities from FAQPage schema to construct verified answers for users.",
                 suggested_implementation="Implement JSON-LD FAQPage markup on commercial and support pages answering the most common user purchase queries."
+            ),
+            ProactiveRecommendation(
+                id="REC-PROACTIVE-03-ENTITY-GRAPH",
+                title="Deep Knowledge Graph Disambiguation via Wikidata & Multi-Registry sameAs",
+                category=CATEGORY_MACHINE_READINESS,
+                rationale="AI search engines resolve brand identity across the wider web by linking sameAs arrays to authoritative knowledge hubs (Wikidata Q-ID, Wikipedia, LinkedIn, Crunchbase), preventing mistaken identity when multiple brands share similar names.",
+                suggested_implementation="Enrich Organization schema on the homepage with an array of verified sameAs URLs pointing to Wikipedia, Wikidata, LinkedIn, and official corporate registry entries."
+            ),
+            ProactiveRecommendation(
+                id="REC-PROACTIVE-04-RAG-CHUNKING",
+                title="Optimize Heading-to-Text Density for RAG Vector Retrievers",
+                category=CATEGORY_MACHINE_READINESS,
+                rationale="LLM vector chunkers (LangChain, LlamaIndex) perform best when document sub-sections are strictly bounded by sequential H2/H3 headings containing 150 to 400 words of semantic text. Overly long continuous walls of text dilute vector embedding similarity.",
+                suggested_implementation="Structure content blocks so each distinct sub-concept is introduced by a descriptive H2/H3 tag followed by 150-400 words of focused, quote-ready text."
+            ),
+            ProactiveRecommendation(
+                id="REC-PROACTIVE-05-AI-ACTION-MANIFEST",
+                title="Expose Machine-Readable Action Specifications (OpenAPI Manifest)",
+                category=CATEGORY_AI_DISCOVERABILITY,
+                rationale="Next-generation autonomous agents (ChatGPT Operator, Claude Computer Use) transition from informational search to transactional execution. Publishing an OpenAPI specification enables autonomous agents to interact with your services programmatically.",
+                suggested_implementation="Publish an OpenAPI / Swagger 3.0 specification at /.well-known/openapi.yaml or /api/spec, and link to it from /llms.txt."
             )
         ]
         return recs

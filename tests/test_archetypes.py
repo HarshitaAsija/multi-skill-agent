@@ -339,6 +339,43 @@ class TestHreflangIntegrity(unittest.TestCase):
         self.assertEqual(len(hreflang_findings), 0)
 
 
+class TestMetaDescriptionQuality(unittest.TestCase):
+    """Suboptimal or missing meta descriptions should trigger DISC-11 (Appendix F)."""
+
+    def test_missing_meta_description_on_homepage(self):
+        html = """<!DOCTYPE html>
+        <html><head><title>No Meta Description Site</title></head>
+        <body><h1>Welcome</h1></body></html>"""
+        analyser = PageAnalyser()
+        pdata = analyser.analyse("https://example.com/", html)
+
+        skill = CrawlRenderAuditSkill()
+        findings = []
+        skill._check_meta_description_quality(pdata, findings)
+
+        desc_findings = [f for f in findings if "DISC-11-MISSING-META-DESCRIPTION" in f.id]
+        self.assertTrue(len(desc_findings) > 0)
+        self.assertEqual(desc_findings[0].severity, "MEDIUM")
+
+    def test_suboptimal_short_meta_description(self):
+        html = """<!DOCTYPE html>
+        <html><head>
+            <title>Short Meta Description Site</title>
+            <meta name="description" content="Too short.">
+        </head><body><h1>Welcome</h1></body></html>"""
+        analyser = PageAnalyser()
+        pdata = analyser.analyse("https://example.com/", html)
+
+        skill = CrawlRenderAuditSkill()
+        findings = []
+        skill._check_meta_description_quality(pdata, findings)
+
+        desc_findings = [f for f in findings if "DISC-11-SUBOPTIMAL-META-DESCRIPTION" in f.id]
+        self.assertTrue(len(desc_findings) > 0)
+        self.assertEqual(desc_findings[0].severity, "LOW")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

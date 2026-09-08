@@ -62,6 +62,9 @@ class PageData:
         self.same_as_links: List[str] = []      # sameAs links from Organization JSON-LD
         self.has_faq_schema: bool = False        # FAQPage / Speakable JSON-LD present
         self.page_title_brand: Optional[str] = None  # Last segment of title tag (brand suffix)
+        self.embedded_objects_count: int = 0         # <iframe>, <object>, <embed> tags
+        self.embedded_object_sources: List[str] = [] # Sources of embedded elements
+        self.text_to_html_ratio: float = 0.0         # Visible text / raw HTML ratio
 
     @property
     def images_missing_alt_count(self) -> int:
@@ -118,9 +121,10 @@ class PageAnalyser:
         self._extract_links(soup, data, url)
         self._extract_json_ld(soup, data)
         self._extract_tables_and_images(soup, data)
+        self._extract_embedded_objects(soup, data)
         self._extract_cta_labels(soup, data)
         self._extract_footer(soup, data)
-        self._extract_text_metrics(soup, data)
+        self._extract_text_metrics(soup, data, len(html))
         self._extract_temporal_dates(soup, data)
         self._extract_forms(soup, data)
 
@@ -280,7 +284,7 @@ class PageAnalyser:
                 self._collect_schema_types(item, types_list)
 
     # ------------------------------------------------------------------ #
-    #  Tables & Image Alt Coverage                                         #
+    #  Tables, Embedded Media & Image Alt Coverage                         #
     # ------------------------------------------------------------------ #
     def _extract_tables_and_images(self, soup: BeautifulSoup, data: PageData) -> None:
         data.has_tabular_data = bool(soup.find(["table", "dl"]))
@@ -291,6 +295,13 @@ class PageAnalyser:
             src = img.get("src") or img.get("data-src") or "unknown"
             if alt is None or not str(alt).strip():
                 data.images_missing_alt.append(src[:150])
+
+    def _extract_embedded_objects(self, soup: BeautifulSoup, data: PageData) -> None:
+        for tag in soup.find_all(["iframe", "object", "embed"]):
+            src = tag.get("src") or tag.get("data") or ""
+            data.embedded_objects_count += 1
+            if src:
+                data.embedded_object_sources.append(src[:150])
 
     # ------------------------------------------------------------------ #
     #  CTA Labels (Buttons)                                               #
@@ -316,7 +327,7 @@ class PageAnalyser:
     # ------------------------------------------------------------------ #
     #  Text Metrics                                                        #
     # ------------------------------------------------------------------ #
-    def _extract_text_metrics(self, soup: BeautifulSoup, data: PageData) -> None:
+    def _extract_text_metrics(self, soup: BeautifulSoup, data: PageData, raw_html_len: int = 0) -> None:
         soup_copy = BeautifulSoup(str(soup), "html.parser")
         for tag in soup_copy(["script", "style", "noscript", "svg"]):
             tag.decompose()
@@ -326,6 +337,7 @@ class PageAnalyser:
         data.raw_text_length = len(visible_text)
         data.word_count = len(visible_text.split())
         data.body_text_sample = visible_text[:2000]
+        data.text_to_html_ratio = round(data.raw_text_length / max(1, raw_html_len), 3) if raw_html_len > 0 else 0.0
 
     # ------------------------------------------------------------------ #
     #  Temporal Dates (Publication / Modified)                            #

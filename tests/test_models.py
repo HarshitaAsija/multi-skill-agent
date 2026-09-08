@@ -22,7 +22,7 @@ class TestModels(unittest.TestCase):
     def test_audit_request_creation(self):
         req = AuditRequest(url="https://example.com")
         self.assertEqual(req.url, "https://example.com")
-        self.assertEqual(req.max_pages, 15)
+        self.assertEqual(req.max_pages, 40)
         self.assertIsInstance(req.to_dict(), dict)
 
     def test_evidence_item_confidence_bounding(self):

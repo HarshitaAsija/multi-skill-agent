@@ -2,7 +2,7 @@
 
 [![Adobe University Hackathon 2026](https://img.shields.io/badge/Adobe%20Hackathon-Round%203%20Submission-FF0000.svg)](https://github.com/HarshitaAsija/multi-skill-agent)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests Passing](https://img.shields.io/badge/Tests-60%20Passed-brightgreen.svg)](tests/)
+[![Tests Passing](https://img.shields.io/badge/Tests-63%20Passed-brightgreen.svg)](tests/)
 [![Package Size](https://img.shields.io/badge/Package%20Size-~93%20KB-success.svg)](marketplace.json)
 
 ## Overview
@@ -118,7 +118,7 @@ python -m unittest discover tests
 
 Expected output:
 ```
-Ran 60 tests in ~1.5s
+Ran 63 tests in ~1.6s
 OK
 ```
 
@@ -129,10 +129,10 @@ python scripts/package_submission.py
 ```
 
 This automated validator:
-1. Executes all **60 unit tests** with zero failures.
+1. Executes all **63 unit tests** with zero failures.
 2. Validates `marketplace.json` schema and agentskills.io compliance for every `SKILL.md`.
 3. Creates a clean, compressed submission archive (`agent-skill-marketplace-submission.zip`).
-4. Verifies the archive size is strictly under 50 MB (~95 KB).
+4. Verifies the archive size is strictly under 50 MB (~110 KB).
 5. Unpacks the archive into an isolated temporary directory and confirms standalone CLI execution.
 
 ---
@@ -145,8 +145,8 @@ This automated validator:
 | `--summary` | `-s` | Display formatted terminal executive summary & Question Gaps | `False` |
 | `--markdown` | `-m` | Export publication-ready Markdown audit document | `None` |
 | `--output` | `-o` | Save structured JSON report to a file path | `None` (stdout) |
-| `--max-pages` | `-p` | Maximum pages to sample across template buckets | `15` |
-| `--max-depth` | `-d` | Maximum crawl link depth | `2` |
+| `--max-pages` | `-p` | Maximum pages to sample across template buckets | `40` |
+| `--max-depth` | `-d` | Maximum crawl link depth | `4` |
 | `--timeout` | `-t` | Per-request HTTP timeout in seconds | `10.0` |
 
 ---
@@ -165,6 +165,7 @@ This automated validator:
 | **`DISC-07`** | `crawl-render-audit` | Machine Readiness | Client-Side Hydration Lock (Blank SPA Mount Container) | HIGH |
 | **`DISC-08`** | `crawl-render-audit` | AI Discoverability | Missing `/llms.txt` Machine-Readable Content Index | MEDIUM |
 | **`DISC-09`** | `crawl-render-audit` | AI Discoverability | Multilingual Hreflang Tags Missing `x-default` Fallback Directive | LOW |
+| **`DISC-11`** | `crawl-render-audit` | AI Discoverability | Missing or Suboptimal Snippet Summary Metadata (`<meta name="description">`) | MEDIUM |
 | **`KNOW-01`** | `crawl-render-audit` | Machine Readiness | Missing Primary `<H1>` Heading or Broken Heading Hierarchy | MEDIUM |
 | **`KNOW-02`** | `crawl-render-audit` | Machine Readiness | Missing Context-Gated Schema.org JSON-LD (Organization, Product) | HIGH |
 | **`KNOW-03`** | `crawl-render-audit` | Machine Readiness | Comparative / Tabular Data in Unstructured Layout Markup | MEDIUM |
@@ -172,6 +173,7 @@ This automated validator:
 | **`KNOW-05`** | `crawl-render-audit` | Machine Readiness | Missing `sameAs` Entity Authority Links in Organization Schema | MEDIUM |
 | **`KNOW-06`** | `crawl-render-audit` | Machine Readiness | Missing `BreadcrumbList` Schema.org Structured Data on Subpage | LOW |
 | **`KNOW-07`** | `crawl-render-audit` | Machine Readiness | Missing `Article` / `BlogPosting` Schema.org Markup on Editorial Page | MEDIUM |
+| **`KNOW-08`** | `crawl-render-audit` | Machine Readiness | Key Information Trapped in Non-Textual Embedded Elements (Iframe/Object/PDF) | MEDIUM |
 | **`FRESH-01`** | `freshness-corroboration` | Factual Freshness | Outdated Copyright Year Detected in Footer Text | MEDIUM |
 | **`FRESH-02`** | `freshness-corroboration` | Factual Freshness | Stale Article Publication / Modification Timestamps | LOW |
 | **`FRESH-03`** | `freshness-corroboration` | Factual Freshness | Contradictory Year Signals Between Content and Footer | MEDIUM |

@@ -43,11 +43,11 @@ _TEMPLATE_PATH_MAP = {
 # Max pages to sample per template category (prevents 15 blog posts from eating crawl budget)
 MAX_PAGES_PER_TEMPLATE = {
     TEMPLATE_HOMEPAGE: 1,
-    TEMPLATE_ABOUT_COMPANY: 3,
-    TEMPLATE_PRODUCT_PRICING: 4,
-    TEMPLATE_DOCS_API: 4,
-    TEMPLATE_BLOG_CONTENT: 3,
-    TEMPLATE_GENERIC: 5,
+    TEMPLATE_ABOUT_COMPANY: 6,
+    TEMPLATE_PRODUCT_PRICING: 10,
+    TEMPLATE_DOCS_API: 10,
+    TEMPLATE_BLOG_CONTENT: 8,
+    TEMPLATE_GENERIC: 10,
 }
 
 
@@ -116,14 +116,16 @@ class BoundedCrawler:
     def __init__(
         self,
         http_client: Optional[SafeHTTPClient] = None,
-        max_pages: int = 15,
-        max_depth: int = 2,
-        per_host_delay: float = 0.2,  # Polite delay in seconds
+        max_pages: int = 40,
+        max_depth: int = 4,
+        per_host_delay: float = 0.25,  # Polite delay in seconds
+        max_crawl_seconds: float = 180.0,  # 3-minute adaptive time governor ceiling
     ):
         self.http_client = http_client or SafeHTTPClient()
         self.max_pages = max_pages
         self.max_depth = max_depth
         self.per_host_delay = per_host_delay
+        self.max_crawl_seconds = max_crawl_seconds
 
     def crawl(
         self,
@@ -178,7 +180,12 @@ class BoundedCrawler:
         for seed in (seed_urls or []):
             enqueue(seed, depth=1)
 
+        start_time = time.time()
         while queue and len(crawled) < self.max_pages:
+            if time.time() - start_time > self.max_crawl_seconds:
+                logger.info(f"Crawl reached adaptive time budget ceiling ({self.max_crawl_seconds}s). Sealing queue with {len(crawled)} sampled pages.")
+                break
+
             prio, _, url, depth, bucket = heapq.heappop(queue)
 
             if depth > self.max_depth:
