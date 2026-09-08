@@ -47,6 +47,12 @@ def main():
         help="Optional file path to write JSON report output"
     )
     parser.add_argument(
+        "--markdown", "-m",
+        type=str,
+        default=None,
+        help="Optional file path to export formatted Markdown audit report (e.g., audit-report.md)"
+    )
+    parser.add_argument(
         "--summary", "-s",
         action="store_true",
         help="Display human-readable executive summary in terminal instead of raw JSON"
@@ -68,6 +74,14 @@ def main():
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(json_output)
+
+    # If --markdown file specified, export formatted Markdown document
+    if args.markdown:
+        from shared.report_generator import generate_markdown_report
+        md_content = generate_markdown_report(result)
+        with open(args.markdown, "w", encoding="utf-8") as f:
+            f.write(md_content)
+        print(f"[REPORT] Exported Markdown audit document to: {args.markdown}")
 
     # Output formatted summary or clean JSON report to stdout
     if args.summary:
