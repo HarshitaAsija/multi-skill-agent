@@ -25,20 +25,26 @@ def main():
     parser.add_argument(
         "--max-pages", "-p",
         type=int,
-        default=15,
-        help="Maximum pages to crawl (default: 15)"
+        default=40,
+        help="Maximum pages to crawl (default: 40)"
     )
     parser.add_argument(
         "--max-depth", "-d",
         type=int,
-        default=2,
-        help="Maximum crawl link depth (default: 2)"
+        default=4,
+        help="Maximum crawl link depth (default: 4)"
     )
     parser.add_argument(
         "--timeout", "-t",
         type=float,
         default=10.0,
         help="Per-request HTTP timeout in seconds (default: 10.0)"
+    )
+    parser.add_argument(
+        "--gemini-api-key", "-g",
+        type=str,
+        default=None,
+        help="Optional Google Gemini API Key for deep LLM answerability and recommendations (or set GEMINI_API_KEY env var)"
     )
     parser.add_argument(
         "--output", "-o",
@@ -65,7 +71,8 @@ def main():
         url=args.url,
         max_pages=args.max_pages,
         max_depth=args.max_depth,
-        timeout_seconds=args.timeout
+        timeout_seconds=args.timeout,
+        gemini_api_key=args.gemini_api_key
     )
 
     json_output = json.dumps(result, indent=2)
@@ -98,18 +105,31 @@ def print_summary(report: dict) -> None:
     findings = report.get("findings", [])
     recs = report.get("proactive_recommendations", [])
 
+    exec_synthesis = report.get("executive_synthesis")
+
     print("\n" + "=" * 70)
     print("  AGENT SKILL MARKETPLACE - AUDIT EXECUTIVE SUMMARY")
     print("=" * 70)
     print(f"Target Site:   {site}")
     print(f"Audited At:    {audited_at}")
     print(f"AI Readiness:  {score} / 100")
+    if exec_synthesis:
+        print(f"AI Engine:     Google Gemini (Active LLM Reasoning)")
+    else:
+        print(f"AI Engine:     Deterministic Heuristic Mode (Set GEMINI_API_KEY to activate Gemini)")
     print(f"Total Issues:  {summary.get('total_findings', 0)} "
           f"(CRITICAL: {summary.get('critical', 0)} | "
           f"HIGH: {summary.get('high', 0)} | "
           f"MEDIUM: {summary.get('medium', 0)} | "
           f"LOW: {summary.get('low', 0)})")
     print("-" * 70)
+
+    if exec_synthesis:
+        print("\n" + "-" * 70)
+        print("  EXECUTIVE AI DISCOVERABILITY SYNTHESIS (Google Gemini)")
+        print("-" * 70)
+        print(exec_synthesis)
+        print("-" * 70)
 
     if not findings:
         print("  [OK] No critical issues detected. Site demonstrates high AI readiness.")

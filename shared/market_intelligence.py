@@ -931,13 +931,40 @@ class MarketIntelligenceEngine:
         },
     }
 
-    def analyze(self, root_url: str, page_data_map: Dict[str, Any], brand_name: Optional[str] = None) -> MarketIntelligenceReport:
+    def analyze(
+        self,
+        root_url: str,
+        page_data_map: Dict[str, Any],
+        brand_name: Optional[str] = None,
+        gemini_client: Optional[Any] = None
+    ) -> MarketIntelligenceReport:
         brand = brand_name or self._infer_brand_name(root_url, page_data_map)
         detected_ind, conf = self._detect_industry(page_data_map)
         ind_def = self.INDUSTRY_DEFINITIONS.get(detected_ind, self.INDUSTRY_DEFINITIONS["GENERAL_BUSINESS"])
 
         aggregated_text = self._aggregate_text(page_data_map)
         all_json_ld_types = self._aggregate_json_ld_types(page_data_map)
+
+        # 1. Real LLM Reasoning via Google Gemini API if available
+        if gemini_client and getattr(gemini_client, "is_available", lambda: False)():
+            try:
+                gemini_res = gemini_client.evaluate_website_answerability(
+                    brand=brand,
+                    root_url=root_url,
+                    industry_label=ind_def["label"],
+                    questions=ind_def["questions"],
+                    aggregated_content=aggregated_text
+                )
+                if gemini_res and isinstance(gemini_res, dict) and "questions" in gemini_res:
+                    return self._build_report_from_gemini(
+                        gemini_res=gemini_res,
+                        detected_ind=detected_ind,
+                        industry_label=ind_def["label"],
+                        confidence=conf,
+                        fallback_q_defs=ind_def["questions"]
+                    )
+            except Exception:
+                pass  # Fall back gracefully to deterministic analysis
 
         question_results: List[QuestionCheckResult] = []
         clear_count = 0
@@ -996,6 +1023,94 @@ class MarketIntelligenceEngine:
             partial_count=partial_count,
             missing_count=missing_count,
             questions=question_results,
+            question_gaps=question_gaps,
+            roadmap=roadmap,
+        )
+
+    def _build_report_from_gemini(
+        self,
+        gemini_res: Dict[str, Any],
+        detected_ind: str,
+        industry_label: str,
+        confidence: float,
+        fallback_q_defs: List[Dict[str, Any]]
+    ) -> MarketIntelligenceReport:
+        g_questions = gemini_res.get("questions", [])
+        q_results: List[QuestionCheckResult] = []
+        clear_count = 0
+        partial_count = 0
+        missing_count = 0
+        question_gaps: List[str] = []
+
+        fallback_map = {q["id"]: q for q in fallback_q_defs}
+
+        for item in g_questions:
+            qid = item.get("id", "")
+            fb = fallback_map.get(qid, {})
+            q_text = item.get("question", fb.get("question", "Unknown question"))
+            status = item.get("status", "NOT_ANSWERABLE")
+            if status not in {"ANSWERABLE", "PARTIAL", "NOT_ANSWERABLE"}:
+                status = "NOT_ANSWERABLE"
+
+            if status == "ANSWERABLE":
+                clear_count += 1
+            elif status == "PARTIAL":
+                partial_count += 1
+                question_gaps.append(q_text)
+            else:
+                missing_count += 1
+                question_gaps.append(q_text)
+
+            faq_q = item.get("faq_q", fb.get("faq_q", q_text))
+            faq_a = item.get("faq_a", fb.get("faq_a", "Information not explicitly stated on website."))
+
+            faq_snippet = {
+                "@context": "https://schema.org",
+                "@type": "Question",
+                "name": faq_q,
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": faq_a,
+                },
+            }
+
+            impact = item.get("impact", fb.get("impact", "MEDIUM"))
+            effort = item.get("effort", fb.get("effort", "LOW"))
+            if impact not in {"HIGH", "MEDIUM", "LOW"}:
+                impact = "MEDIUM"
+            if effort not in {"LOW", "MEDIUM", "HIGH"}:
+                effort = "LOW"
+
+            q_results.append(
+                QuestionCheckResult(
+                    id=qid or fb.get("id", f"Q-{len(q_results)+1}"),
+                    question=q_text,
+                    simulated_prompt=item.get("simulated_prompt", fb.get("prompt", q_text)),
+                    status=status,
+                    evidence_found=item.get("evidence_found", "Evaluated by Google Gemini API"),
+                    ai_risk=item.get("ai_risk", fb.get("ai_risk", "AI assistants cannot verify this detail.")),
+                    faq_schema_snippet=faq_snippet,
+                    impact=impact,
+                    effort=effort,
+                )
+            )
+
+        total_q = len(q_results)
+        coverage_pct = round(((clear_count * 1.0 + partial_count * 0.5) / max(1, total_q)) * 100) if total_q else 0
+        roadmap = self._build_roadmap(q_results, fallback_q_defs)
+
+        refined_label = gemini_res.get("detected_industry_refined") or industry_label
+
+        return MarketIntelligenceReport(
+            detected_industry=detected_ind,
+            industry_label=refined_label,
+            confidence=max(confidence, 0.95),
+            market_question_coverage_pct=coverage_pct,
+            questions_checked=total_q,
+            clear_count=clear_count,
+            partial_count=partial_count,
+            missing_count=missing_count,
+            questions=q_results,
             question_gaps=question_gaps,
             roadmap=roadmap,
         )
@@ -1090,8 +1205,14 @@ class MarketIntelligenceEngine:
                 chunks.append(pdata.meta_description)
             if hasattr(pdata, "h1_tags") and pdata.h1_tags:
                 chunks.extend(pdata.h1_tags)
+            if hasattr(pdata, "headings") and pdata.headings:
+                for h in pdata.headings:
+                    if isinstance(h, dict) and "text" in h:
+                        chunks.append(h["text"])
             if hasattr(pdata, "button_cta_labels") and pdata.button_cta_labels:
                 chunks.extend(pdata.button_cta_labels)
+            if hasattr(pdata, "body_text_sample") and pdata.body_text_sample:
+                chunks.append(pdata.body_text_sample)
             if hasattr(pdata, "footer_text") and pdata.footer_text:
                 chunks.append(pdata.footer_text)
         return " ".join(chunks)

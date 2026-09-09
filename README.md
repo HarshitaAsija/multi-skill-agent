@@ -2,9 +2,9 @@
 
 [![Adobe University Hackathon 2026](https://img.shields.io/badge/Adobe%20Hackathon-Round%203%20Submission-FF0000.svg)](https://github.com/HarshitaAsija/multi-skill-agent)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-63%20Passed-brightgreen.svg)](tests/)
-[![Package Size](https://img.shields.io/badge/Package-110%20KB-success.svg)](agent-skill-marketplace-submission.zip)
-[![Zero External APIs](https://img.shields.io/badge/External%20APIs-None-lightgrey.svg)](#)
+[![Tests](https://img.shields.io/badge/Tests-69%20Passed-brightgreen.svg)](tests/)
+[![Package Size](https://img.shields.io/badge/Package-120%20KB-success.svg)](agent-skill-marketplace-submission.zip)
+[![AI Engine](https://img.shields.io/badge/AI%20Engine-Google%20Gemini%202.5%20Flash-4285F4.svg)](#)
 
 ---
 
@@ -12,12 +12,12 @@
 
 Point it at any website URL and it automatically audits two things:
 
-1. **AI Discoverability** — can AI search engines (ChatGPT, Perplexity, Claude) actually find, parse, and cite this site?
-2. **On-Site Engagement** — once a visitor arrives (human or autonomous agent), does the page keep them?
+1. **AI Discoverability** — can AI search engines (ChatGPT, Perplexity, Claude, Gemini) actually find, parse, understand, and cite this site?
+2. **On-Site Engagement** — once a visitor arrives (human or autonomous agent), does the page retain them and enable action?
 
-It produces a structured JSON report plus an optional Markdown document with a 0–100 AI Readiness Score, a prioritized list of findings, ready-to-paste schema fixes, and a question gap analysis specific to the site's industry.
+It produces a structured JSON report plus an optional Markdown document with a 0–100 AI Readiness Score, a prioritized list of technical findings, ready-to-paste schema fixes, and deep question gap analysis.
 
-No API keys. No external ML services. No writes to any target. Just HTTP GET/HEAD requests and pure Python logic.
+Powered by **Google Gemini 2.5 Flash** for real semantic content evaluation and site-tailored recommendations, with zero heavy external packages — built purely using Python standard library HTTP calling Google's REST API.
 
 ---
 
@@ -36,7 +36,7 @@ run_audit.py  (CLI entrypoint)
 |  - Deduplicates & calibrates findings    |
 |  - Computes AI Readiness Score (0-100)   |
 |  - Runs Market Intelligence Engine       |
-|  - Generates 5 proactive recommendations |
+|  - Invokes Google Gemini 2.5 Flash       |
 |  - Emits JSON + optional Markdown report |
 +--------+-----------+--------------------+
          |           |           |
@@ -57,8 +57,8 @@ run_audit.py  (CLI entrypoint)
 
          Shared modules (common layer)
   models · config · http_client · severity
-  evidence · url_utils · market_intelligence
-  report_generator · report_validator
+  evidence · url_utils · gemini_client
+  market_intelligence · report_generator
 ```
 
 ---
@@ -70,7 +70,7 @@ The crawl and extraction engine. Starts from the homepage and sitemap (if found)
 
 A **180-second hard time budget** ensures the audit always finishes within the contest's 5-minute limit regardless of site size. On a typical site the crawl takes 20–40 seconds; the budget is a safety ceiling.
 
-Each page goes through a `PageAnalyser` that extracts heading structure, Schema.org JSON-LD blocks, canonical/hreflang/OG tags, breadcrumbs, embedded objects (iframes, PDFs, `<object>` tags), text-to-HTML ratio, meta descriptions, and more. All extracted data feeds the DISC and KNOW check battery.
+Each page goes through a `PageAnalyser` that extracts heading structure, Schema.org JSON-LD blocks, canonical/hreflang/OG tags, breadcrumbs, embedded objects (iframes, PDFs, `<object>` tags), text-to-HTML ratio, meta descriptions, and visible body text. All extracted data feeds the DISC and KNOW check battery.
 
 ### `freshness-corroboration`
 Dedicated to temporal and brand consistency. Parses copyright year text in footers, `<time>` elements, `article:published_time`/`article:modified_time` meta tags, and `datePublished` in JSON-LD. Flags stale years, contradictory date signals across content and footer, and checks whether the page title brand suffix is consistent across all crawled subpages.
@@ -79,36 +79,42 @@ Dedicated to temporal and brand consistency. Parses copyright year text in foote
 Checks on-site experience from both a human and an autonomous agent perspective. Looks for a clear above-the-fold value proposition in the hero section, proper `<label>` associations for all form inputs, specific CTA button text (flags generics like "Click Here" or "Submit"), breadcrumb navigation on deep pages, and `FAQPage`/`Speakable` JSON-LD which lets AI assistants surface direct answers from the site.
 
 ### `audit-orchestrator`
-The coordinator. Collects raw findings from all three specialists, strips per-URL suffixes from finding IDs, merges duplicates across pages, applies severity-weighted deductions to produce the AI Readiness Score, runs the Market Intelligence Engine, and appends five proactive recommendations that go beyond the flagged issues.
+The coordinator. Collects raw findings from all three specialists, strips per-URL suffixes from finding IDs, merges duplicates across pages, applies severity-weighted deductions to produce the AI Readiness Score, and executes the Market Intelligence & Gemini reasoning pipeline.
 
 ---
 
-## Hero Feature: AI Answerability & Market Intelligence
+## Dual-Engine Intelligence: Google Gemini 2.5 Flash + Deterministic Heuristics
 
-Most audit tools stop at "you're missing schema." This engine goes a step further: it figures out what questions someone would realistically ask an AI assistant about this type of business, checks whether the current site content can actually answer those questions, and tells you exactly what to add — with copy-paste JSON-LD.
+The system combines real LLM semantic reasoning with rigorous structural diagnostics:
 
-**How it works:**
+| Feature | Powered by Google Gemini (`GEMINI_API_KEY`) | Offline Fallback (Keyless Mode) |
+|:---|:---|:---|
+| **Question Answerability** | Reads real extracted website text and reasons whether Perplexity / ChatGPT can verify each fact. | Pattern matching against domain regex and keyword matrices. |
+| **Evidence Extraction** | Quotes concrete excerpts from the site's actual body copy or explains specifically what details are missing. | Identifies matching DOM tokens and text substrings. |
+| **Proactive Recommendations** | Dynamically synthesizes 4-5 high-impact architectural recommendations tailored specifically to that brand. | Calibrated forward-looking standard recommendations. |
+| **Executive Synthesis** | Generates an executive assessment of the brand's AI search stance and conversion vulnerabilities. | Structured severity scorecard and metric breakdowns. |
+| **FAQ Schema Generation** | Generates tailored Schema.org JSON-LD with real information from the website. | Structured FAQ templates aligned to detected industry. |
 
-1. **Industry Detection** — Scores the site against 10 verticals using Schema.org type matches (+4.0), URL path signals (+1.5), and text keywords (+0.8). Threshold ≥ 3.0 to claim a vertical; `General Business` is the universal fallback.
-2. **Question Expectation Set** — Loads 5 representative questions a user or AI assistant would ask for that vertical.
-3. **Answerability Test** — Checks whether the crawled content provides clear, extractable answers.
-4. **Gap Report** — Surfaces unanswered questions as prioritized growth items with a suggested JSON-LD snippet.
-5. **AI Query Simulation** — Generates a sample conversational prompt an AI assistant might receive about this site and flags the risk of a poor or hallucinated response.
+**Zero Heavy Dependencies:** The Gemini client is built entirely using Python's standard library `urllib.request` and `json`. No external SDKs (like `google-generativeai` or `langchain`) are needed. This keeps the package size at just **~120 KB** (well under the 50 MB limit) while delivering full LLM capability.
 
-**Supported verticals:**
+---
 
-| Vertical | Example gap questions |
+## Supported Industry Verticals (Market Intelligence)
+
+The engine automatically detects the business domain across 10 verticals:
+
+| Vertical | High-Intent Question Gaps Evaluated |
 |:---|:---|
-| Restaurant & Dining | Opening hours, dietary options, table reservations |
-| E-Commerce & Retail | Shipping fees, return policy, payment methods |
-| SaaS / Tech | Pricing tiers, free trial, API docs, compliance (SOC2/GDPR) |
-| Healthcare | Specialties, appointment booking, accepted insurance |
-| Education | Degree programs, tuition, accreditation, online options |
-| Real Estate | Available listings, tour scheduling, mortgage options |
-| Legal | Practice areas, fee structure, bar admissions |
-| Sports & Fitness | Equipment, class schedule, membership pricing |
-| Food Delivery | Delivery radius, ETA, live tracking, missing item policy |
-| General Business | Core services, quote channels, geographic coverage |
+| **Restaurant & Dining** | Opening hours, dietary/vegetarian options, online table reservations, physical location, menu details. |
+| **E-Commerce & Retail** | Product pricing, shipping destinations & delivery times, return & refund policies, checkout payment methods, order tracking. |
+| **SaaS / Technology** | Subscription pricing tiers, free trial availability, platform integrations, public API documentation, security & compliance (SOC2/GDPR). |
+| **Healthcare & Medical** | Medical specialties, online appointment booking, accepted insurance plans, clinic hours, doctor board certifications. |
+| **Education & Academy** | Degree programs, admission requirements, tuition & financial aid, accreditation, online/hybrid delivery. |
+| **Real Estate** | Available listings, tour scheduling, geographic coverage, mortgage financing options, broker licensing. |
+| **Legal & Law Services** | Practice areas, consultation intake channels, fee structures (contingency/hourly), state bar admissions, past settlements. |
+| **Sports & Fitness** | Equipment & amenities, group class schedules, membership pricing & trial passes, trainer certifications, operating hours. |
+| **Food Delivery** | Delivery postal radius, delivery ETA & fees, live order tracking, packaging safety, missing item resolution. |
+| **General Business** | Core service offerings, target audience personas, quote request channels, geographic coverage, client testimonials & case studies. |
 
 ---
 
@@ -188,18 +194,6 @@ Score = max(0, 100 - sum of all deductions)
 
 ---
 
-## Proactive Recommendations
-
-Beyond diagnostic findings, the orchestrator always generates five proactive suggestions — things no automated check will flag but that meaningfully improve AI readiness:
-
-1. **Semantic Anchor Pages** — Consolidate scattered topic content into single authoritative pages that AI retrievers can cite with confidence.
-2. **Citation-Ready Fact Blocks** — Wrap key facts in `<dl>` / `<table>` markup so RAG pipelines can extract and chunk them cleanly.
-3. **Entity Graph Disambiguation** — Add `sameAs` links to Wikidata and Wikipedia in Organization JSON-LD so AI knowledge graphs can anchor the entity's real-world identity.
-4. **RAG Chunking Density** — Improve heading-to-text ratio so vector retrieval systems can split content at meaningful semantic boundaries.
-5. **OpenAPI Action Manifest** — Expose a `/openapi.json` manifest so autonomous agents can discover and call the site's transactional capabilities (bookings, search, checkout) directly.
-
----
-
 ## Runtime & Constraints
 
 | Property | Value |
@@ -210,11 +204,9 @@ Beyond diagnostic findings, the orchestrator always generates five proactive sug
 | Full audit time | **< 5 minutes** on a standard machine |
 | HTTP operations | GET / HEAD only — strictly read-only |
 | Runtime dependencies | `beautifulsoup4` only |
-| External API calls | None |
-| Package size | **~110 KB** (contest limit: 50 MB) |
-| Test suite | **63 tests**, zero failures |
-
-Crawler is polite by default: 0.25-second inter-request delay per host, `robots.txt` disallow rules respected, and per-template page caps to avoid deep catalog scraping.
+| External packages | None (Gemini API called via Python standard library) |
+| Package size | **~120 KB** (contest limit: 50 MB) |
+| Test suite | **69 tests**, zero failures |
 
 ---
 
@@ -225,6 +217,25 @@ git clone https://github.com/HarshitaAsija/multi-skill-agent.git
 cd multi-skill-agent
 pip install -r requirements.txt
 ```
+
+### Setting Up Google Gemini (Optional but Recommended)
+
+You can get a free Gemini API key from [aistudio.google.com](https://aistudio.google.com).
+
+```bash
+# Option 1: Export environment variable
+export GEMINI_API_KEY="AIzaSyYourKeyHere..."
+
+# Option 2: Put it in a local .env file
+echo "GEMINI_API_KEY=AIzaSyYourKeyHere..." > .env
+
+# Option 3: Pass via CLI argument
+python run_audit.py --url https://example.com --summary --gemini-api-key "AIzaSyYourKeyHere..."
+```
+
+*(If no key is provided, the tool automatically runs in deterministic offline mode with zero errors.)*
+
+### Running Audits
 
 ```bash
 # Terminal executive summary (recommended for demos)
@@ -245,6 +256,7 @@ python run_audit.py --url https://example.com --output report.json
 | `--summary` | Print formatted terminal executive summary | `false` |
 | `--markdown` | Write Markdown audit report to a file | `none` |
 | `--output` | Write JSON report to a file (stdout if omitted) | stdout |
+| `--gemini-api-key` | Google Gemini API Key for LLM reasoning | `None` (reads env) |
 | `--max-pages` | Maximum pages to crawl | `40` |
 | `--max-depth` | Maximum link depth from root | `4` |
 | `--timeout` | Per-request HTTP timeout in seconds | `10.0` |
@@ -259,7 +271,7 @@ python -m pytest tests/ -q
 python -m unittest discover tests
 ```
 
-Expected: `63 passed` in under 10 seconds.
+Expected: `69 passed` in under 10 seconds.
 
 ---
 
@@ -269,4 +281,4 @@ Expected: `63 passed` in under 10 seconds.
 python scripts/package_submission.py
 ```
 
-Runs all 63 tests, validates `marketplace.json` and all `SKILL.md` files against the agentskills.io schema, builds the submission zip, checks the archive is under 50 MB, and does a standalone CLI smoke test from the unpacked archive. All four steps must show `[PASS]`.
+Runs all 69 tests, validates `marketplace.json` and all `SKILL.md` files against the agentskills.io schema, builds the submission zip, checks the archive is under 50 MB, and does a standalone CLI smoke test from the unpacked archive. All four steps must show `[PASS]`.

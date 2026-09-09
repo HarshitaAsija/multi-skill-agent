@@ -50,6 +50,14 @@ def generate_markdown_report(report: Dict[str, Any]) -> str:
         lines.append(f"| **Market Question Coverage** | **{cov}%** | {cov_label} |")
     lines.append(f"| **Total Technical Findings** | **{summary.get('total_findings', 0)}** | {summary.get('critical', 0)} Critical, {summary.get('high', 0)} High, {summary.get('medium', 0)} Med, {summary.get('low', 0)} Low |")
     lines.append(f"")
+
+    exec_synth = report.get("executive_synthesis")
+    if exec_synth:
+        lines.append(f"### Executive AI Discoverability Synthesis (Google Gemini)")
+        lines.append(f"")
+        lines.append(exec_synth)
+        lines.append(f"")
+
     lines.append(f"---")
     lines.append(f"")
 

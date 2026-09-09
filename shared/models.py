@@ -150,6 +150,7 @@ class AuditResult:
     proactive_recommendations: List[ProactiveRecommendation] = field(default_factory=list)
     ai_readiness_score: int = 100  # 0-100 composite score, computed after deduplication
     market_intelligence: Optional[Dict[str, Any]] = None
+    executive_synthesis: Optional[str] = None
 
     def calculate_summary(self) -> None:
         """Recalculates counts by severity from current findings list."""
@@ -178,4 +179,6 @@ class AuditResult:
         }
         if self.market_intelligence is not None:
             result["market_intelligence"] = self.market_intelligence
+        if self.executive_synthesis is not None:
+            result["executive_synthesis"] = self.executive_synthesis
         return result

@@ -20,6 +20,7 @@ from shared.config import (
 from shared.logging_utils import get_logger
 from shared.report_validator import validate_report
 from shared.market_intelligence import MarketIntelligenceEngine
+from shared.gemini_client import GeminiClient
 from skills import load_skill_module
 
 logger = get_logger("orchestrator")
@@ -43,25 +44,31 @@ class Orchestrator:
         http_client: Optional[SafeHTTPClient] = None,
         crawl_skill: Optional[Any] = None,
         freshness_skill: Optional[Any] = None,
-        engagement_skill: Optional[Any] = None
+        engagement_skill: Optional[Any] = None,
+        gemini_client: Optional[Any] = None
     ):
         self.http_client = http_client or SafeHTTPClient()
         self.crawl_skill = crawl_skill or CrawlRenderAuditSkill(http_client=self.http_client)
         self.freshness_skill = freshness_skill or FreshnessCorroborationSkill()
         self.engagement_skill = engagement_skill or EngagementAuditSkill()
         self.market_intel_engine = MarketIntelligenceEngine()
+        self.gemini_client = gemini_client or GeminiClient()
 
     def run_audit(
         self,
         url: str,
-        max_pages: int = 15,
-        max_depth: int = 2,
-        timeout_seconds: float = 10.0
+        max_pages: int = 40,
+        max_depth: int = 4,
+        timeout_seconds: float = 10.0,
+        gemini_api_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Executes complete multi-skill audit pipeline for a given website URL.
         Returns serialized dict matching the required JSON report schema.
         """
+        if gemini_api_key:
+            self.gemini_client = GeminiClient(api_key=gemini_api_key)
+
         # 1. Input Validation & Normalization
         if not is_valid_url(url):
             logger.error(f"Invalid target URL provided: {url}")
@@ -108,34 +115,60 @@ class Orchestrator:
         # 5. Deduplicate and Calibrate Findings
         final_findings = self._deduplicate_and_calibrate(all_findings)
 
-        # 6. Generate Contextual Proactive Recommendations
-        proactive_recommendations = self._generate_proactive_recommendations(
-            normalized_url, final_findings
-        )
-
-        # 7. Run AI Answerability & Market Intelligence Engine
+        # 6. Run AI Answerability & Market Intelligence Engine
         market_intel_report = None
+        detected_industry_label = "General Business"
         if page_data_map:
             try:
-                market_intel_report = self.market_intel_engine.analyze(
+                mi_obj = self.market_intel_engine.analyze(
                     root_url=normalized_url,
-                    page_data_map=page_data_map
-                ).to_dict()
+                    page_data_map=page_data_map,
+                    gemini_client=self.gemini_client
+                )
+                market_intel_report = mi_obj.to_dict()
+                detected_industry_label = mi_obj.industry_label
             except Exception as e:
                 logger.warning(f"Market intelligence analysis encountered an issue: {e}")
 
-        # 8. Construct Final AuditResult Object
+        # 7. Generate Contextual Proactive Recommendations (Gemini or Calibrated)
+        proactive_recommendations = self._generate_proactive_recommendations(
+            site=normalized_url,
+            findings=final_findings,
+            page_data_map=page_data_map,
+            industry_label=detected_industry_label
+        )
+
+        # 8. Executive Synthesis via Gemini if active
+        executive_synthesis = None
+        score = self._compute_ai_readiness_score(final_findings)
+        if self.gemini_client and getattr(self.gemini_client, "is_available", lambda: False)():
+            try:
+                brand = self.market_intel_engine._infer_brand_name(normalized_url, page_data_map)
+                cov = market_intel_report.get("market_question_coverage_pct", 0) if market_intel_report else 0
+                executive_synthesis = self.gemini_client.generate_executive_synthesis(
+                    brand=brand,
+                    root_url=normalized_url,
+                    score=score,
+                    industry_label=detected_industry_label,
+                    total_findings=len(final_findings),
+                    coverage_pct=cov
+                )
+            except Exception as e:
+                logger.debug(f"Executive synthesis skipped: {e}")
+
+        # 9. Construct Final AuditResult Object
         result = AuditResult(
             site=normalized_url,
             findings=final_findings,
             proactive_recommendations=proactive_recommendations,
-            ai_readiness_score=self._compute_ai_readiness_score(final_findings),
-            market_intelligence=market_intel_report
+            ai_readiness_score=score,
+            market_intelligence=market_intel_report,
+            executive_synthesis=executive_synthesis
         )
 
         result_dict = result.to_dict()
 
-        # 8. Validate output schema before returning
+        # 10. Validate output schema before returning
         is_valid, schema_errors = validate_report(result_dict)
         if not is_valid:
             logger.warning(f"Report schema validation flagged {len(schema_errors)} issue(s):")
@@ -213,11 +246,61 @@ class Orchestrator:
     def _generate_proactive_recommendations(
         self,
         site: str,
-        findings: List[Finding]
+        findings: List[Finding],
+        page_data_map: Optional[Dict[str, Any]] = None,
+        industry_label: str = "General Business"
     ) -> List[ProactiveRecommendation]:
         """
         Generates forward-looking architecture and AI-optimization recommendations.
+        Uses Google Gemini API for site-specific intelligence when available,
+        falling back to calibrated standard recommendations.
         """
+        if self.gemini_client and getattr(self.gemini_client, "is_available", lambda: False)():
+            try:
+                brand = self.market_intel_engine._infer_brand_name(site, page_data_map or {})
+                content_sample = self.market_intel_engine._aggregate_text(page_data_map or {})
+                findings_summary = [
+                    {"id": f.id, "title": f.title, "severity": f.severity}
+                    for f in findings[:10]
+                ]
+                ai_recs = self.gemini_client.generate_site_tailored_recommendations(
+                    brand=brand,
+                    root_url=site,
+                    industry_label=industry_label,
+                    findings_summary=findings_summary,
+                    site_content_summary=content_sample
+                )
+                if ai_recs and isinstance(ai_recs, list) and len(ai_recs) >= 3:
+                    parsed_recs: List[ProactiveRecommendation] = []
+                    valid_cats = {
+                        CATEGORY_AI_DISCOVERABILITY,
+                        CATEGORY_MACHINE_READINESS,
+                        "factual_freshness",
+                        "onsite_engagement",
+                    }
+                    for idx, r in enumerate(ai_recs, 1):
+                        rid = str(r.get("id") or f"REC-AI-{idx:02d}").strip()
+                        rtitle = str(r.get("title") or "").strip()
+                        rcat = str(r.get("category") or CATEGORY_MACHINE_READINESS).strip()
+                        if rcat not in valid_cats:
+                            rcat = CATEGORY_MACHINE_READINESS
+                        rrat = str(r.get("rationale") or "").strip()
+                        rimp = str(r.get("suggested_implementation") or "").strip()
+                        if rtitle and rrat and rimp:
+                            parsed_recs.append(
+                                ProactiveRecommendation(
+                                    id=rid,
+                                    title=rtitle,
+                                    category=rcat,
+                                    rationale=rrat,
+                                    suggested_implementation=rimp
+                                )
+                            )
+                    if len(parsed_recs) >= 3:
+                        return parsed_recs
+            except Exception as e:
+                logger.debug(f"Gemini proactive recommendations fallback: {e}")
+
         recs: List[ProactiveRecommendation] = [
             ProactiveRecommendation(
                 id="REC-PROACTIVE-01-LLMS-TXT",
