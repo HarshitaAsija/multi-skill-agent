@@ -1,4 +1,4 @@
-﻿"""
+"""
 Unit tests for Security, SSRF Prevention, Path Traversal, and Secret Redaction.
 """
 
@@ -91,7 +91,9 @@ class TestSecretRedaction(unittest.TestCase):
     """Verifies that API keys and secrets are masked from logs."""
 
     def test_mask_gemini_key(self):
-        text = "Request sent with key AIzaSyA1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q"
+        # Constructed at runtime — not a real key, avoids scanner false-positives
+        fake_key = "AIzaSy" + "A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q"
+        text = f"Request sent with key {fake_key}"
         masked = mask_secrets(text)
         self.assertNotIn("A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q", masked)
         self.assertIn("AIzaSy***REDACTED***", masked)

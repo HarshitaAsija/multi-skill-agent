@@ -45,7 +45,7 @@ class TestGeminiClientBasics(unittest.TestCase):
             ))
 
     def test_client_with_key_is_available(self):
-        client = GeminiClient(api_key="AIzaSyDummyKeyForTesting12345")
+        client = GeminiClient(api_key="test-key-not-real-xK9mP2qL7nR4sT")
         self.assertTrue(client.is_available())
 
 
@@ -53,7 +53,7 @@ class TestGeminiClientMockedCalls(unittest.TestCase):
     """Tests Gemini API calls and response handling with mocked HTTP responses."""
 
     def setUp(self):
-        self.client = GeminiClient(api_key="AIzaSyDummyKeyForTesting12345")
+        self.client = GeminiClient(api_key="test-key-not-real-xK9mP2qL7nR4sT")
 
     @patch("urllib.request.urlopen")
     def test_generate_json_success(self, mock_urlopen):
