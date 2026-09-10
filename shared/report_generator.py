@@ -10,6 +10,14 @@ import json
 from typing import Dict, Any, List
 
 
+def _clean_table_cell(text: Any) -> str:
+    """Sanitizes text for safe inclusion inside Markdown table cells."""
+    if text is None:
+        return ""
+    s = str(text).replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    return s.replace("|", "\\|").strip()
+
+
 def generate_markdown_report(report: Dict[str, Any]) -> str:
     """
     Generates a publication-grade Markdown audit document from an AuditResult dictionary.
@@ -76,9 +84,9 @@ def generate_markdown_report(report: Dict[str, Any]) -> str:
         }
         for q in mi.get("questions", []):
             st = status_icons.get(q.get("status"), q.get("status"))
-            q_text = q.get("question", "")
-            prompt = q.get("simulated_prompt", "").replace("|", "\\|")
-            risk = q.get("ai_risk", "").replace("|", "\\|")
+            q_text = _clean_table_cell(q.get("question", ""))
+            prompt = _clean_table_cell(q.get("simulated_prompt", ""))
+            risk = _clean_table_cell(q.get("ai_risk", ""))
             lines.append(f"| **{st}** | {q_text} | *\"{prompt}\"* | {risk} |")
         lines.append(f"")
 
@@ -90,7 +98,11 @@ def generate_markdown_report(report: Dict[str, Any]) -> str:
             lines.append(f"| Priority | Action Item | Expected Impact | Dev Effort | Business Rationale |")
             lines.append(f"| :--- | :--- | :--- | :--- | :--- |")
             for item in roadmap:
-                lines.append(f"| **Priority {item.get('priority')}** | {item.get('action_title')} | `{item.get('impact')}` | `{item.get('effort')}` | {item.get('why')} |")
+                act_title = _clean_table_cell(item.get('action_title'))
+                imp = _clean_table_cell(item.get('impact'))
+                eff = _clean_table_cell(item.get('effort'))
+                why_text = _clean_table_cell(item.get('why'))
+                lines.append(f"| **Priority {item.get('priority')}** | {act_title} | `{imp}` | `{eff}` | {why_text} |")
             lines.append(f"")
 
             # Ready to Paste FAQ Schema Snippets

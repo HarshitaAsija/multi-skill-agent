@@ -1,10 +1,11 @@
-﻿# Agent Skill Marketplace — AI Readiness & On-Site Engagement Auditor
+# Agent Skill Marketplace — AI Readiness & On-Site Engagement Auditor
 
 [![Adobe University Hackathon 2026](https://img.shields.io/badge/Adobe%20Hackathon-Round%203%20Submission-FF0000.svg)](https://github.com/HarshitaAsija/multi-skill-agent)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-69%20Passed-brightgreen.svg)](tests/)
-[![Package Size](https://img.shields.io/badge/Package-120%20KB-success.svg)](agent-skill-marketplace-submission.zip)
+[![Tests](https://img.shields.io/badge/Tests-86%20Passed-brightgreen.svg)](tests/)
+[![Package Size](https://img.shields.io/badge/Package-125%20KB-success.svg)](agent-skill-marketplace-submission.zip)
 [![AI Engine](https://img.shields.io/badge/AI%20Engine-Google%20Gemini%202.5%20Flash-4285F4.svg)](#)
+[![Security](https://img.shields.io/badge/Security-SSRF%20%26%20Secret%20Hardened-brightgreen.svg)](#)
 
 ---
 
@@ -58,8 +59,24 @@ run_audit.py  (CLI entrypoint)
          Shared modules (common layer)
   models · config · http_client · severity
   evidence · url_utils · gemini_client
-  market_intelligence · report_generator
+  security · market_intelligence · report_generator
 ```
+
+---
+
+## Production Hardening & Security Architecture
+
+This project was built from the ground up with strict defense-in-depth security:
+
+| Security Domain | Protection Mechanism |
+|:---|:---|
+| **SSRF Defense** | Target URLs and redirects are validated against private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`), `localhost`, and cloud instance metadata endpoints (`169.254.169.254`, `metadata.google.internal`). Internal LAN probing is blocked by default. |
+| **Secret Protection** | Zero hardcoded keys in source code. `.env` and credential files are strictly ignored in `.gitignore`. Gemini API calls send credentials via `x-goog-api-key` HTTP headers (never leaked into query parameters, URLs, or proxy logs). |
+| **Log Sanitization** | `SecretRedactionFilter` intercepts all log records to redact API keys and bearer tokens (`mask_secrets()`). |
+| **Path Traversal Protection** | File export flags (`--output`, `--markdown`) sanitize paths, reject null-byte injections, and prohibit writes to sensitive system roots. |
+| **Input Boundary Validation** | Enforces strict bounds on crawl parameters (`max_pages` 1–200, `max_depth` 1–10, `timeout` 1–60s) preventing resource exhaustion or DoS. |
+| **Safe Error Handling** | Production CLI suppresses raw tracebacks and displays clear error messages without exposing system internals (verbose tracebacks gated behind `--debug`). |
+| **Strictly Read-Only** | Only HTTP `GET` and `HEAD` methods are implemented. No forms are submitted, no state is mutated, and zero destructive actions are executed. |
 
 ---
 
@@ -257,9 +274,11 @@ python run_audit.py --url https://example.com --output report.json
 | `--markdown` | Write Markdown audit report to a file | `none` |
 | `--output` | Write JSON report to a file (stdout if omitted) | stdout |
 | `--gemini-api-key` | Google Gemini API Key for LLM reasoning | `None` (reads env) |
-| `--max-pages` | Maximum pages to crawl | `40` |
-| `--max-depth` | Maximum link depth from root | `4` |
-| `--timeout` | Per-request HTTP timeout in seconds | `10.0` |
+| `--allow-private` | Permit auditing private/loopback IPs (disabled by default for SSRF safety) | `false` |
+| `--debug` | Enable verbose debugging stack traces | `false` |
+| `--max-pages` | Maximum pages to crawl (1–200) | `40` |
+| `--max-depth` | Maximum link depth from root (1–10) | `4` |
+| `--timeout` | Per-request HTTP timeout in seconds (1.0–60.0s) | `10.0` |
 
 ---
 
@@ -271,7 +290,7 @@ python -m pytest tests/ -q
 python -m unittest discover tests
 ```
 
-Expected: `69 passed` in under 10 seconds.
+Expected: `86 passed` in under 5 seconds.
 
 ---
 
@@ -281,4 +300,4 @@ Expected: `69 passed` in under 10 seconds.
 python scripts/package_submission.py
 ```
 
-Runs all 69 tests, validates `marketplace.json` and all `SKILL.md` files against the agentskills.io schema, builds the submission zip, checks the archive is under 50 MB, and does a standalone CLI smoke test from the unpacked archive. All four steps must show `[PASS]`.
+Runs all 86 tests, validates `marketplace.json` and all `SKILL.md` files against the agentskills.io schema, builds the submission zip, checks the archive is under 50 MB, and does a standalone CLI smoke test from the unpacked archive. All four steps must show `[PASS]`.

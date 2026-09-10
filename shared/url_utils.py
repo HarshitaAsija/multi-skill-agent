@@ -4,7 +4,8 @@ URL Parsing, Validation, and Normalization Utilities.
 
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode, urljoin
 import re
-from typing import Optional, Set
+import ipaddress
+from typing import Optional, Set, Tuple
 
 def is_valid_url(url: str) -> bool:
     """Checks if a string is a valid HTTP/HTTPS URL with a netloc."""
@@ -16,6 +17,55 @@ def is_valid_url(url: str) -> bool:
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
     except Exception:
         return False
+
+def is_safe_url(url: str, allow_private: bool = False) -> Tuple[bool, str]:
+    """
+    Validates URL safety against SSRF (Server-Side Request Forgery) attacks.
+    Blocks:
+      - Non-HTTP/HTTPS schemes (file://, gopher://, etc.)
+      - Localhost and loopback addresses (127.0.0.0/8, ::1)
+      - Link-local and cloud instance metadata services (169.254.169.254, metadata.google.internal)
+      - Private RFC-1918 subnets (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) unless allow_private=True
+    """
+    if not is_valid_url(url):
+        return False, "Invalid URL format or unsupported scheme"
+
+    parsed = urlparse(url.strip())
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "Missing hostname in target URL"
+
+    hostname_lower = hostname.lower()
+
+    # Cloud metadata endpoints
+    BLOCKED_HOSTNAMES = {
+        "metadata.google.internal",
+        "metadata",
+        "instance-data",
+        "169.254.169.254",
+    }
+    if hostname_lower in BLOCKED_HOSTNAMES:
+        return False, f"Access to cloud instance metadata service '{hostname}' is prohibited (SSRF prevention)"
+
+    if not allow_private:
+        if hostname_lower == "localhost" or hostname_lower.endswith(".localhost") or hostname_lower.endswith(".local"):
+            return False, "Access to localhost or local network services is prohibited (SSRF prevention)"
+
+        try:
+            ip = ipaddress.ip_address(hostname_lower)
+            if ip.is_loopback:
+                return False, f"Loopback address '{hostname}' is blocked (SSRF prevention)"
+            if ip.is_link_local:
+                return False, f"Link-local address '{hostname}' is blocked (SSRF prevention)"
+            if ip.is_private:
+                return False, f"Private network address '{hostname}' is blocked (SSRF prevention)"
+            if ip.is_reserved or ip.is_multicast:
+                return False, f"Reserved / multicast address '{hostname}' is blocked"
+        except ValueError:
+            # Hostname is a domain name, not an IP literal
+            pass
+
+    return True, ""
 
 def normalize_url(url: str) -> str:
     """

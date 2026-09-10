@@ -64,37 +64,88 @@ def main():
         help="Display human-readable executive summary in terminal instead of raw JSON"
     )
 
-    args = parser.parse_args()
-
-    orchestrator = Orchestrator()
-    result = orchestrator.run_audit(
-        url=args.url,
-        max_pages=args.max_pages,
-        max_depth=args.max_depth,
-        timeout_seconds=args.timeout,
-        gemini_api_key=args.gemini_api_key
+    parser.add_argument(
+        "--allow-private",
+        action="store_true",
+        help="Permit auditing of private or loopback networks (disabled by default for SSRF protection)"
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable full verbose debugging stack traces"
     )
 
-    json_output = json.dumps(result, indent=2)
+    args = parser.parse_args()
 
-    # If --output file specified, save to disk
+    # 1. Input Boundary Validation
+    from shared.security import validate_runtime_bounds, is_safe_url, is_safe_output_path
+
+    valid_bounds, bounds_err = validate_runtime_bounds(args.max_pages, args.max_depth, args.timeout)
+    if not valid_bounds:
+        sys.stderr.write(f"[INPUT ERROR] {bounds_err}\n")
+        sys.exit(1)
+
+    # 2. SSRF Security Validation
+    is_safe, safety_reason = is_safe_url(args.url, allow_private=args.allow_private)
+    if not is_safe:
+        sys.stderr.write(f"[SECURITY ERROR] Target URL rejected: {safety_reason}\n")
+        sys.exit(1)
+
+    # 3. Path Traversal Validation for Export Files
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(json_output)
+        safe_out, resolved_out = is_safe_output_path(args.output)
+        if not safe_out:
+            sys.stderr.write(f"[SECURITY ERROR] Invalid --output path: {resolved_out}\n")
+            sys.exit(1)
+        args.output = resolved_out
 
-    # If --markdown file specified, export formatted Markdown document
     if args.markdown:
-        from shared.report_generator import generate_markdown_report
-        md_content = generate_markdown_report(result)
-        with open(args.markdown, "w", encoding="utf-8") as f:
-            f.write(md_content)
-        print(f"[REPORT] Exported Markdown audit document to: {args.markdown}")
+        safe_md, resolved_md = is_safe_output_path(args.markdown)
+        if not safe_md:
+            sys.stderr.write(f"[SECURITY ERROR] Invalid --markdown path: {resolved_md}\n")
+            sys.exit(1)
+        args.markdown = resolved_md
 
-    # Output formatted summary or clean JSON report to stdout
-    if args.summary:
-        print_summary(result)
-    else:
-        print(json_output)
+    # 4. Safe Execution Pipeline
+    try:
+        orchestrator = Orchestrator()
+        result = orchestrator.run_audit(
+            url=args.url,
+            max_pages=args.max_pages,
+            max_depth=args.max_depth,
+            timeout_seconds=args.timeout,
+            gemini_api_key=args.gemini_api_key
+        )
+
+        json_output = json.dumps(result, indent=2)
+
+        # If --output file specified, save to disk
+        if args.output:
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(json_output)
+
+        # If --markdown file specified, export formatted Markdown document
+        if args.markdown:
+            from shared.report_generator import generate_markdown_report
+            md_content = generate_markdown_report(result)
+            with open(args.markdown, "w", encoding="utf-8") as f:
+                f.write(md_content)
+            print(f"[REPORT] Exported Markdown audit document to: {args.markdown}")
+
+        # Output formatted summary or clean JSON report to stdout
+        if args.summary:
+            print_summary(result)
+        else:
+            print(json_output)
+
+    except KeyboardInterrupt:
+        sys.stderr.write("\n[INTERRUPTED] Audit halted by user.\n")
+        sys.exit(130)
+    except Exception as e:
+        if args.debug:
+            raise
+        sys.stderr.write(f"\n[ERROR] Audit execution failed: {e}\n")
+        sys.exit(1)
 
 
 def print_summary(report: dict) -> None:

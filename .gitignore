@@ -1,12 +1,41 @@
+﻿# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Caches and test coverage
 .pytest_cache/
 .coverage
 htmlcov/
 *.log
+
+# Environments & Virtualenvs
 .venv/
 env/
 venv/
+ENV/
+
+# System files
 .DS_Store
+Thumbs.db
+
+# Secrets, Credentials, and Environment Configuration (NEVER COMMIT)
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.pfx
+*.p12
+*.cert
+secrets/
+credentials.json
+client_secrets.json
+
+# Local audit output artifacts & test reports
+*-audit.md
+audit-report.md
+report.json
 *.zip
+*.bak
+*.tmp

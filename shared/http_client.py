@@ -16,7 +16,7 @@ from shared.config import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_USER_AGENT,
 )
-from shared.url_utils import normalize_url, is_valid_url
+from shared.url_utils import normalize_url, is_valid_url, is_safe_url
 
 @dataclass
 class HTTPResponse:
@@ -34,7 +34,7 @@ class HTTPResponse:
 class SafeHTTPClient:
     """
     Polite, read-only HTTP client designed specifically for non-destructive website auditing.
-    Only supports GET and HEAD methods.
+    Only supports GET and HEAD methods. Includes built-in SSRF and private-network protection.
     """
 
     def __init__(
@@ -42,12 +42,14 @@ class SafeHTTPClient:
         user_agent: str = DEFAULT_USER_AGENT,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         polite_delay: float = DEFAULT_POLITE_DELAY_SECONDS,
-        max_retries: int = DEFAULT_MAX_RETRIES
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        allow_private: bool = False
     ):
         self.user_agent = user_agent
         self.timeout = timeout
         self.polite_delay = polite_delay
         self.max_retries = max_retries
+        self.allow_private = allow_private
         self._last_request_time: float = 0.0
 
         # Permissive SSL context for auditing legacy or staging sites safely (read-only)
@@ -80,6 +82,16 @@ class SafeHTTPClient:
                 is_success=False
             )
 
+        is_safe, safety_reason = is_safe_url(url, allow_private=self.allow_private)
+        if not is_safe:
+            return HTTPResponse(
+                url=url,
+                final_url=url,
+                status_code=0,
+                error=f"Security check failed (SSRF Protection): {safety_reason}",
+                is_success=False
+            )
+
         target_url = normalize_url(url)
         self._apply_polite_delay()
 
@@ -93,11 +105,15 @@ class SafeHTTPClient:
         retries = 0
         last_error: Optional[str] = None
         redirect_chain: List[str] = [target_url]
+        allow_private_flag = self.allow_private
 
         class RedirectHandler(urllib.request.HTTPRedirectHandler):
             def http_error_302(self, req, fp, code, msg, headers):
                 new_url = headers.get('Location')
                 if new_url:
+                    safe, reason = is_safe_url(new_url, allow_private=allow_private_flag)
+                    if not safe:
+                        raise urllib.error.URLError(f"SSRF redirect blocked: {reason}")
                     redirect_chain.append(new_url)
                 return super().http_error_302(req, fp, code, msg, headers)
             http_error_301 = http_error_302

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Google Gemini API Client for Agent Skill Marketplace.
 
 Provides real LLM reasoning for:
@@ -45,11 +45,11 @@ _load_env_if_present()
 class GeminiClient:
     """
     Client for Google Gemini REST API.
-    Interacts with models like gemini-2.5-flash and gemini-1.5-flash.
+    Interacts with models like gemini-2.5-flash and gemini-2.5-flash-lite.
     """
 
     DEFAULT_MODEL = "gemini-2.5-flash"
-    FALLBACK_MODEL = "gemini-1.5-flash"
+    FALLBACK_MODEL = "gemini-2.5-flash-lite"
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
     def __init__(
@@ -71,9 +71,15 @@ class GeminiClient:
         """Returns True if a valid Gemini API key is configured."""
         return bool(self.api_key and len(self.api_key) > 5)
 
+    def _sanitize(self, text: str) -> str:
+        """Masks API key from any error messages, URLs, or tracebacks."""
+        if self.api_key and self.api_key in text:
+            return text.replace(self.api_key, "***REDACTED***")
+        return text
+
     def _call_gemini_api(self, prompt: str, model_name: str) -> Optional[str]:
-        """Performs raw POST request to Gemini REST API."""
-        endpoint = f"{self.BASE_URL}/{model_name}:generateContent?key={self.api_key}"
+        """Performs secure POST request to Gemini REST API with key in header."""
+        endpoint = f"{self.BASE_URL}/{model_name}:generateContent"
 
         payload = {
             "contents": [
@@ -91,7 +97,10 @@ class GeminiClient:
         req = urllib.request.Request(
             endpoint,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key
+            },
             method="POST"
         )
 
@@ -108,13 +117,13 @@ class GeminiClient:
         except urllib.error.HTTPError as e:
             err_body = ""
             try:
-                err_body = e.read().decode("utf-8")
+                err_body = self._sanitize(e.read().decode("utf-8"))
             except Exception:
                 pass
             logger.warning(f"Gemini API HTTP {e.code} error on model {model_name}: {err_body[:200]}")
             return None
         except Exception as e:
-            logger.warning(f"Gemini API request failed on model {model_name}: {e}")
+            logger.warning(f"Gemini API request failed on model {model_name}: {self._sanitize(str(e))}")
             return None
 
     def generate_json(self, prompt: str) -> Optional[Any]:
@@ -302,7 +311,7 @@ Explain clearly:
 
 Keep tone professional, analytical, authoritative. Return plain text without JSON.
 """
-        endpoint = f"{self.BASE_URL}/{self.model}:generateContent?key={self.api_key}"
+        endpoint = f"{self.BASE_URL}/{self.model}:generateContent"
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.3}
@@ -311,7 +320,10 @@ Keep tone professional, analytical, authoritative. Return plain text without JSO
         req = urllib.request.Request(
             endpoint,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key
+            },
             method="POST"
         )
         try:
