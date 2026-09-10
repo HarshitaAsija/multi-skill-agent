@@ -64,21 +64,6 @@ run_audit.py  (CLI entrypoint)
 
 ---
 
-## Production Hardening & Security Architecture
-
-This project was built from the ground up with strict defense-in-depth security:
-
-| Security Domain | Protection Mechanism |
-|:---|:---|
-| **SSRF Defense** | Target URLs and redirects are validated against private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`), `localhost`, and cloud instance metadata endpoints (`169.254.169.254`, `metadata.google.internal`). Internal LAN probing is blocked by default. |
-| **Secret Protection** | Zero hardcoded keys in source code. `.env` and credential files are strictly ignored in `.gitignore`. Gemini API calls send credentials via `x-goog-api-key` HTTP headers (never leaked into query parameters, URLs, or proxy logs). |
-| **Log Sanitization** | `SecretRedactionFilter` intercepts all log records to redact API keys and bearer tokens (`mask_secrets()`). |
-| **Path Traversal Protection** | File export flags (`--output`, `--markdown`) sanitize paths, reject null-byte injections, and prohibit writes to sensitive system roots. |
-| **Input Boundary Validation** | Enforces strict bounds on crawl parameters (`max_pages` 1–200, `max_depth` 1–10, `timeout` 1–60s) preventing resource exhaustion or DoS. |
-| **Safe Error Handling** | Production CLI suppresses raw tracebacks and displays clear error messages without exposing system internals (verbose tracebacks gated behind `--debug`). |
-| **Strictly Read-Only** | Only HTTP `GET` and `HEAD` methods are implemented. No forms are submitted, no state is mutated, and zero destructive actions are executed. |
-
----
 
 ## The Four Skills
 
