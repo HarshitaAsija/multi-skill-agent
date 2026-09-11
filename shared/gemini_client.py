@@ -45,7 +45,8 @@ _load_env_if_present()
 class GeminiClient:
     """
     Client for Google Gemini REST API.
-    Interacts with models like gemini-2.5-flash and gemini-2.5-flash-lite.
+    Uses gemini-1.5-flash (primary) and gemini-1.5-flash-8b (fallback) —
+    both broadly available across free and paid API tiers.
     """
 
     DEFAULT_MODEL = "gemini-2.5-flash"

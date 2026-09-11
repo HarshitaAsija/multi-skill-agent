@@ -15,7 +15,7 @@ DEFAULT_MAX_DEPTH = 4
 DEFAULT_TIMEOUT_SECONDS = 10.0
 DEFAULT_POLITE_DELAY_SECONDS = 0.25
 DEFAULT_MAX_RETRIES = 2
-DEFAULT_USER_AGENT = "AgentReadinessAuditor/1.0 (+https://github.com/adobe-hackathon/agent-skill-marketplace)"
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 # Supported Skill Names
 SKILL_ORCHESTRATOR = "audit-orchestrator"

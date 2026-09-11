@@ -223,6 +223,9 @@ def print_summary(report: dict) -> None:
         for q in mi.get("questions", []):
             st = status_icons.get(q.get("status"), "[?]")
             print(f"  {st:<10} {q.get('question')}")
+            evidence = q.get('evidence_found', '')
+            if evidence and q.get('status') == "ANSWERABLE":
+                print(f"             Verified Signal: {evidence[:100]}")
             if q.get("status") != "ANSWERABLE":
                 print(f"             Simulated AI Query: \"{q.get('simulated_prompt')}\"")
                 print(f"             AI Risk: {q.get('ai_risk')}")
@@ -236,6 +239,19 @@ def print_summary(report: dict) -> None:
                 print(f"  Priority {item.get('priority')} [{item.get('impact')} Impact | {item.get('effort')} Effort]")
                 print(f"    Action: {item.get('action_title')}")
                 print(f"    Why:    {item.get('why')}")
+
+            # Print Suggested FAQ Schema JSON-LD
+            faq_entities = [item.get("suggested_faq_json_ld") for item in roadmap if item.get("suggested_faq_json_ld")]
+            if faq_entities:
+                print("\n" + "-" * 70)
+                print("  READY-TO-PASTE FAQ SCHEMA (REMEDIATES DETECTED GAPS)")
+                print("-" * 70)
+                composite_faq = {
+                    "@context": "https://schema.org",
+                    "@type": "FAQPage",
+                    "mainEntity": faq_entities[:3],
+                }
+                print(json.dumps(composite_faq, indent=2))
 
     print("\n" + "=" * 70 + "\n")
 

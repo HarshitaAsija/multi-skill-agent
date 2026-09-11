@@ -118,17 +118,16 @@ class Orchestrator:
         # 6. Run AI Answerability & Market Intelligence Engine
         market_intel_report = None
         detected_industry_label = "General Business"
-        if page_data_map:
-            try:
-                mi_obj = self.market_intel_engine.analyze(
-                    root_url=normalized_url,
-                    page_data_map=page_data_map,
-                    gemini_client=self.gemini_client
-                )
-                market_intel_report = mi_obj.to_dict()
-                detected_industry_label = mi_obj.industry_label
-            except Exception as e:
-                logger.warning(f"Market intelligence analysis encountered an issue: {e}")
+        try:
+            mi_obj = self.market_intel_engine.analyze(
+                root_url=normalized_url,
+                page_data_map=page_data_map or {},
+                gemini_client=self.gemini_client
+            )
+            market_intel_report = mi_obj.to_dict()
+            detected_industry_label = mi_obj.industry_label
+        except Exception as e:
+            logger.warning(f"Market intelligence analysis encountered an issue: {e}")
 
         # 7. Generate Contextual Proactive Recommendations (Gemini or Calibrated)
         proactive_recommendations = self._generate_proactive_recommendations(
