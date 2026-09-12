@@ -1065,6 +1065,23 @@ class MarketIntelligenceEngine:
                 question_gaps.append(q_text)
 
             faq_q = item.get("faq_q", fb.get("faq_q", q_text))
+            # Sanitize leading or promotional questions (e.g. "Why do millions of users trust X?")
+            # into objective, neutral inquiries for Schema.org compliance
+            leading_patterns = [
+                r"^why (?:do|should|would|are)\b",
+                r"^why choose\b",
+                r"^why is .* (?:the best|popular|trusted|chosen)\b",
+                r"^how does .* (?:dominate|excel|revolutionize)\b",
+            ]
+            for pat in leading_patterns:
+                if re.search(pat, faq_q, re.IGNORECASE):
+                    fb_q = fb.get("faq_q")
+                    if fb_q and not any(re.search(p, fb_q, re.IGNORECASE) for p in leading_patterns):
+                        faq_q = fb_q
+                    else:
+                        faq_q = q_text
+                    break
+
             faq_a = item.get("faq_a", fb.get("faq_a", "Information not explicitly stated on website."))
 
             faq_snippet = {

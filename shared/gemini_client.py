@@ -202,7 +202,9 @@ Based strictly on the provided real website content:
 2. Cite the exact evidence or quote found (or specifically explain what key detail is absent).
 3. Formulate a realistic query an end-user would ask an AI assistant about this brand.
 4. Assess the specific hallucination or customer drop-off risk for an AI assistant.
-5. Create an accurate, non-templated Schema.org Question/Answer pair using real details where available, or specific factual text.
+5. Create an accurate, objective, non-templated Schema.org Question/Answer pair using real details where available.
+   CRITICAL FOR faq_q: Formulate a neutral, objective customer question (e.g. "What client reviews or case studies are available?", "What pricing plans does {brand} offer?", "What is the cancellation policy?").
+   NEVER use leading, promotional, or rhetorical marketing questions (e.g. do NOT write "Why do millions of users trust {brand}?", "Why is {brand} the best choice?", or "Why choose {brand}?").
 
 Return your response strictly as a JSON object with this exact structure:
 {{
@@ -220,7 +222,7 @@ Return your response strictly as a JSON object with this exact structure:
       "why": "Why this matters for AI discoverability",
       "impact": "HIGH" or "MEDIUM" or "LOW",
       "effort": "LOW" or "MEDIUM" or "HIGH",
-      "faq_q": "Specific question for FAQ schema",
+      "faq_q": "Neutral, non-leading question for FAQ schema",
       "faq_a": "Specific answer text with real facts"
     }}
   ]

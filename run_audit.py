@@ -185,15 +185,24 @@ def print_summary(report: dict) -> None:
         c_count = crawl_meta.get("pages_crawled", 0)
         c_alias = f" (via alias {crawl_meta.get('host_alias_used')})" if crawl_meta.get("host_alias_used") else ""
         print(f"Crawl Summary: {c_stat} — {c_count} page(s) analyzed{c_alias}")
-    gemini_active = bool(exec_synthesis)
-    if not gemini_active and report.get("market_intelligence"):
-        questions = report.get("market_intelligence", {}).get("questions", [])
-        if any("Gemini" in str(q.get("evidence_found", "")) or "Gemini" in str(q.get("ai_risk", "")) for q in questions):
-            gemini_active = True
-    if gemini_active:
-        print(f"AI Engine:     Google Gemini (Active LLM Reasoning)")
+    is_abstained = score_status == "NOT_COMPUTED" or crawl_meta.get("pages_crawled", 0) == 0
+
+    if is_abstained:
+        print(f"AI Engine:     Abstained (Zero pages retrieved — LLM reasoning withheld to prevent hallucination)")
     else:
-        print(f"AI Engine:     Deterministic Heuristic Mode (Set GEMINI_API_KEY to activate Gemini)")
+        gemini_active = False
+        if exec_synthesis and not exec_synthesis.startswith("Audit Incomplete"):
+            gemini_active = True
+        elif report.get("market_intelligence"):
+            questions = report.get("market_intelligence", {}).get("questions", [])
+            if any("Gemini" in str(q.get("evidence_found", "")) or "Gemini" in str(q.get("ai_risk", "")) for q in questions):
+                gemini_active = True
+
+        if gemini_active:
+            print(f"AI Engine:     Google Gemini (Active LLM Reasoning)")
+        else:
+            print(f"AI Engine:     Deterministic Heuristic Mode (Set GEMINI_API_KEY to activate Gemini)")
+
     print(f"Total Issues:  {summary.get('total_findings', 0)} "
           f"(CRITICAL: {summary.get('critical', 0)} | "
           f"HIGH: {summary.get('high', 0)} | "
@@ -203,7 +212,10 @@ def print_summary(report: dict) -> None:
 
     if exec_synthesis:
         print("\n" + "-" * 70)
-        print("  EXECUTIVE AI DISCOVERABILITY SYNTHESIS (Google Gemini)")
+        if is_abstained:
+            print("  AUDIT ABSTENTION NOTICE")
+        else:
+            print("  EXECUTIVE AI DISCOVERABILITY SYNTHESIS (Google Gemini)")
         print("-" * 70)
         print(exec_synthesis)
         print("-" * 70)
