@@ -146,7 +146,7 @@ The engine automatically detects the business domain across 10 verticals:
 
 ## Diagnostic Check Catalog
 
-28 distinct checks across four categories. Findings carry a stable ID, a severity, an evidence snippet, and a suggested remediation.
+30 distinct checks across five categories. Findings carry a stable ID, a severity, an evidence snippet, and a suggested remediation.
 
 ### AI Discoverability — DISC
 
@@ -155,12 +155,13 @@ The engine automatically detects the business domain across 10 verticals:
 | DISC-00 | Domain unreachable / DNS failure / connection timeout | CRITICAL |
 | DISC-01 | AI scrapers blocked in `robots.txt` (GPTBot, ClaudeBot, PerplexityBot, OAI-SearchBot) | HIGH |
 | DISC-02 | Missing or unreachable XML sitemap | MEDIUM |
-| DISC-02B | Sitemap entries missing `<lastmod>` timestamps | LOW |
-| DISC-02C | Sitemap index degraded — majority of sub-sitemaps failed to parse | MEDIUM |
+| DISC-02B | Sitemap XML unparseable or yields zero valid URLs | MEDIUM |
+| DISC-02C | Sitemap index severely degraded by sub-sitemap failures | MEDIUM |
+| DISC-03 | Sitemap entries missing `<lastmod>` content modification timestamps | LOW |
 | DISC-04 | Meta robots `noindex` blocking AI indexation | HIGH |
-| DISC-05 | Missing or malformed `<link rel="canonical">` | LOW |
+| DISC-05 | Missing or malformed `<link rel="canonical">` tag | LOW |
 | DISC-06 | Missing OpenGraph / Twitter Card social metadata | LOW |
-| DISC-07 | Client-side hydration lock — blank SPA mount with no SSR fallback | HIGH |
+| DISC-07 | Client-side hydration lock — blank SPA mount with sparse server HTML | HIGH |
 | DISC-08 | Missing `/llms.txt` machine-readable content index | MEDIUM |
 | DISC-09 | Multilingual hreflang tags missing the `x-default` fallback directive | LOW |
 | DISC-11 | Missing or suboptimal `<meta name="description">` (absent, < 40 chars, or > 320 chars) | MEDIUM |
@@ -169,12 +170,12 @@ The engine automatically detects the business domain across 10 verticals:
 
 | ID | What it checks | Severity |
 |:---|:---|:---|
-| KNOW-01 | Missing primary `<h1>` or broken heading hierarchy (e.g., h1 → h3 skip) | MEDIUM |
-| KNOW-02 | Missing context-gated Schema.org JSON-LD (Organization, Product, Service) | HIGH |
+| KNOW-01 | Missing primary `<h1>` or broken heading hierarchy (skipped heading levels) | MEDIUM |
+| KNOW-02 | Missing primary `Organization`, `WebSite`, or commercial `Product` Schema.org JSON-LD | HIGH |
 | KNOW-03 | Comparative or tabular data rendered in unstructured layout markup | MEDIUM |
 | KNOW-04 | Key information trapped in images without alt text | LOW |
 | KNOW-05 | Missing `sameAs` entity authority links in Organization schema (Wikipedia, Wikidata, LinkedIn) | MEDIUM |
-| KNOW-06 | Missing `BreadcrumbList` JSON-LD on subpages | LOW |
+| KNOW-06 | Missing `BreadcrumbList` JSON-LD structured data on subpages | LOW |
 | KNOW-07 | Missing `Article` / `BlogPosting` schema on editorial pages | MEDIUM |
 | KNOW-08 | Facts trapped in non-textual embedded elements — iframes, `<object>`, `<embed>`, PDFs | MEDIUM |
 
@@ -182,9 +183,9 @@ The engine automatically detects the business domain across 10 verticals:
 
 | ID | What it checks | Severity |
 |:---|:---|:---|
-| FRESH-01 | Outdated copyright year in footer text | MEDIUM |
-| FRESH-02 | Stale article publication / modification timestamps | LOW |
-| FRESH-03 | Contradictory year signals between content body and footer | MEDIUM |
+| FRESH-01 | Outdated copyright year in footer text (stale temporal signal) | MEDIUM |
+| FRESH-02 | Inconsistent organization entity name / identity statements across pages | HIGH |
+| FRESH-03 | Stale publication or modification timestamps on editorial content | LOW |
 
 ### Brand Consistency — BRAND
 
@@ -197,9 +198,9 @@ The engine automatically detects the business domain across 10 verticals:
 | ID | What it checks | Severity |
 |:---|:---|:---|
 | ENG-01 | Missing above-the-fold hero value proposition | HIGH |
-| ENG-02 | Form accessibility friction — inputs without `<label>` elements | MEDIUM |
+| ENG-02 | Deep subpage context isolation (missing breadcrumb navigation) | MEDIUM |
 | ENG-03 | Ambiguous CTA button labels ("Click Here", "Submit", "Go") | LOW |
-| ENG-04 | Missing breadcrumb navigation on deep subpages | LOW |
+| ENG-04 | Form input accessibility & conversion friction (missing `<label>` elements) | MEDIUM |
 | ENG-05 | No `FAQPage` or `Speakable` JSON-LD schema for AI answer engines | MEDIUM |
 
 ---
