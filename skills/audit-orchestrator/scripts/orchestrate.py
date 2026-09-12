@@ -115,45 +115,87 @@ class Orchestrator:
         # 5. Deduplicate and Calibrate Findings
         final_findings = self._deduplicate_and_calibrate(all_findings)
 
-        # 6. Run AI Answerability & Market Intelligence Engine
-        market_intel_report = None
-        detected_industry_label = "General Business"
-        try:
-            mi_obj = self.market_intel_engine.analyze(
-                root_url=normalized_url,
-                page_data_map=page_data_map or {},
-                gemini_client=self.gemini_client
+        pages_crawled_count = len(page_data_map)
+        first_page = crawled_pages[0] if crawled_pages else None
+        homepage_reachable = bool(first_page and (getattr(first_page, "is_success", False) or isinstance(first_page, str)))
+        homepage_status = getattr(first_page, "status_code", 200 if isinstance(first_page, str) else 0)
+        host_alias_used = getattr(getattr(self.crawl_skill, "crawler", None), "host_alias_used", None)
+        total_attempted = max(1, len(crawled_pages))
+
+        crawl_metadata = {
+            "pages_attempted": total_attempted,
+            "pages_crawled": pages_crawled_count,
+            "homepage_reachable": homepage_reachable,
+            "homepage_status_code": homepage_status,
+            "crawl_status": "SUCCESS" if pages_crawled_count > 0 else "FAILED_ZERO_PAGES",
+            "host_alias_used": host_alias_used,
+        }
+
+        # HARD CRAWL GATE:
+        # If 0 pages were crawled, abstain completely from LLM / downstream market intelligence,
+        # proactive recommendations, and executive synthesis to prevent ungrounded hallucinations.
+        if pages_crawled_count == 0:
+            logger.info("Hard crawl gate triggered: 0 pages retrieved. Downstream market intelligence and synthesis abstained.")
+            score = None
+            score_status = "NOT_COMPUTED"
+            market_intel_report = None
+            executive_synthesis = (
+                "Audit Incomplete: The crawler could not retrieve page content (0 pages crawled). "
+                "Downstream AI answerability, market intelligence questions, and contextual recommendations "
+                "were abstained to ensure findings remain strictly grounded in verified page content."
             )
-            market_intel_report = mi_obj.to_dict()
-            detected_industry_label = mi_obj.industry_label
-        except Exception as e:
-            logger.warning(f"Market intelligence analysis encountered an issue: {e}")
-
-        # 7. Generate Contextual Proactive Recommendations (Gemini or Calibrated)
-        proactive_recommendations = self._generate_proactive_recommendations(
-            site=normalized_url,
-            findings=final_findings,
-            page_data_map=page_data_map,
-            industry_label=detected_industry_label
-        )
-
-        # 8. Executive Synthesis via Gemini if active
-        executive_synthesis = None
-        score = self._compute_ai_readiness_score(final_findings)
-        if self.gemini_client and getattr(self.gemini_client, "is_available", lambda: False)():
-            try:
-                brand = self.market_intel_engine._infer_brand_name(normalized_url, page_data_map)
-                cov = market_intel_report.get("market_question_coverage_pct", 0) if market_intel_report else 0
-                executive_synthesis = self.gemini_client.generate_executive_synthesis(
-                    brand=brand,
-                    root_url=normalized_url,
-                    score=score,
-                    industry_label=detected_industry_label,
-                    total_findings=len(final_findings),
-                    coverage_pct=cov
+            # Purely static, hardcoded infrastructure recommendation (NO LLM invocation)
+            proactive_recommendations = [
+                ProactiveRecommendation(
+                    id="REC-INFRA-01",
+                    title="Verify Web Server Accessibility and Bot-Management Configuration",
+                    category="ai_discoverability",
+                    rationale="Automated AI search crawlers cannot index or cite site content when connection drops, DNS failures, or WAF challenges block HTTP requests.",
+                    suggested_implementation="1. Verify DNS records and web server availability.\n2. Review WAF, Cloudflare, or edge CDN bot-management rules to ensure read-only HTTP GET crawlers are permitted.\n3. Verify SSL certificate configuration on both apex and www host domains."
                 )
+            ]
+        else:
+            score = self._compute_ai_readiness_score(final_findings)
+            score_status = "COMPUTED"
+
+            # 6. Run AI Answerability & Market Intelligence Engine
+            market_intel_report = None
+            detected_industry_label = "General Business"
+            try:
+                mi_obj = self.market_intel_engine.analyze(
+                    root_url=normalized_url,
+                    page_data_map=page_data_map,
+                    gemini_client=self.gemini_client
+                )
+                market_intel_report = mi_obj.to_dict()
+                detected_industry_label = mi_obj.industry_label
             except Exception as e:
-                logger.debug(f"Executive synthesis skipped: {e}")
+                logger.warning(f"Market intelligence analysis encountered an issue: {e}")
+
+            # 7. Generate Contextual Proactive Recommendations (Gemini or Calibrated)
+            proactive_recommendations = self._generate_proactive_recommendations(
+                site=normalized_url,
+                findings=final_findings,
+                page_data_map=page_data_map,
+                industry_label=detected_industry_label
+            )
+
+            # 8. Executive Synthesis via Gemini if active
+            executive_synthesis = None
+            if self.gemini_client and getattr(self.gemini_client, "is_available", lambda: False)():
+                try:
+                    brand = self.market_intel_engine._infer_brand_name(normalized_url, page_data_map)
+                    cov = market_intel_report.get("market_question_coverage_pct", 0) if market_intel_report else 0
+                    executive_synthesis = self.gemini_client.generate_executive_synthesis(
+                        brand=brand,
+                        root_url=normalized_url,
+                        score=score,
+                        industry_label=detected_industry_label,
+                        total_findings=len(final_findings),
+                        coverage_pct=cov
+                    )
+                except Exception as e:
+                    logger.debug(f"Executive synthesis skipped: {e}")
 
         # 9. Construct Final AuditResult Object
         result = AuditResult(
@@ -161,8 +203,10 @@ class Orchestrator:
             findings=final_findings,
             proactive_recommendations=proactive_recommendations,
             ai_readiness_score=score,
+            score_status=score_status,
             market_intelligence=market_intel_report,
-            executive_synthesis=executive_synthesis
+            executive_synthesis=executive_synthesis,
+            crawl_metadata=crawl_metadata,
         )
 
         result_dict = result.to_dict()

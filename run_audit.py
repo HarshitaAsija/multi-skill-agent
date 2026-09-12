@@ -70,6 +70,11 @@ def main():
         help="Permit auditing of private or loopback networks (disabled by default for SSRF protection)"
     )
     parser.add_argument(
+        "--insecure",
+        action="store_true",
+        help="Disable TLS certificate verification (intended only for auditing staging or self-signed test sites)"
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable full verbose debugging stack traces"
@@ -108,7 +113,13 @@ def main():
 
     # 4. Safe Execution Pipeline
     try:
-        orchestrator = Orchestrator()
+        from shared.http_client import SafeHTTPClient
+        client = SafeHTTPClient(
+            timeout=args.timeout,
+            allow_private=args.allow_private,
+            verify_ssl=not args.insecure
+        )
+        orchestrator = Orchestrator(http_client=client)
         result = orchestrator.run_audit(
             url=args.url,
             max_pages=args.max_pages,
@@ -151,10 +162,12 @@ def main():
 def print_summary(report: dict) -> None:
     site = report.get("site", "Unknown")
     audited_at = report.get("audited_at", "")
-    score = report.get("ai_readiness_score", 100)
+    score = report.get("ai_readiness_score")
+    score_status = report.get("score_status", "COMPUTED")
     summary = report.get("summary", {})
     findings = report.get("findings", [])
     recs = report.get("proactive_recommendations", [])
+    crawl_meta = report.get("crawl_metadata", {})
 
     exec_synthesis = report.get("executive_synthesis")
 
@@ -163,8 +176,21 @@ def print_summary(report: dict) -> None:
     print("=" * 70)
     print(f"Target Site:   {site}")
     print(f"Audited At:    {audited_at}")
-    print(f"AI Readiness:  {score} / 100")
-    if exec_synthesis:
+    if score is not None:
+        print(f"AI Readiness:  {score} / 100")
+    else:
+        print(f"AI Readiness:  NOT_COMPUTED (0 pages crawled - abstained)")
+    if crawl_meta:
+        c_stat = crawl_meta.get("crawl_status", "UNKNOWN")
+        c_count = crawl_meta.get("pages_crawled", 0)
+        c_alias = f" (via alias {crawl_meta.get('host_alias_used')})" if crawl_meta.get("host_alias_used") else ""
+        print(f"Crawl Summary: {c_stat} — {c_count} page(s) analyzed{c_alias}")
+    gemini_active = bool(exec_synthesis)
+    if not gemini_active and report.get("market_intelligence"):
+        questions = report.get("market_intelligence", {}).get("questions", [])
+        if any("Gemini" in str(q.get("evidence_found", "")) or "Gemini" in str(q.get("ai_risk", "")) for q in questions):
+            gemini_active = True
+    if gemini_active:
         print(f"AI Engine:     Google Gemini (Active LLM Reasoning)")
     else:
         print(f"AI Engine:     Deterministic Heuristic Mode (Set GEMINI_API_KEY to activate Gemini)")

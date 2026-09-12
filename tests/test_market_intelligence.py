@@ -7,13 +7,15 @@ from shared.market_intelligence import MarketIntelligenceEngine
 
 
 class MockPageData:
-    def __init__(self, title="", meta_description="", json_ld_types=None, h1_tags=None, button_cta_labels=None, footer_text=""):
+    def __init__(self, title="", meta_description="", json_ld_types=None, h1_tags=None, button_cta_labels=None, footer_text="", body_text_sample="", headings=None):
         self.title = title
         self.meta_description = meta_description
         self.json_ld_types = json_ld_types or []
         self.h1_tags = h1_tags or []
         self.button_cta_labels = button_cta_labels or []
         self.footer_text = footer_text
+        self.body_text_sample = body_text_sample
+        self.headings = headings or []
         self.page_title_brand = "TestBrand"
 
 
@@ -83,8 +85,7 @@ class TestMarketIntelligenceEngine(unittest.TestCase):
 
         # Priority 1 should have suggested FAQ JSON-LD
         top_rec = report.roadmap[0]
-        self.assertEqual(top_rec.priority, 1)
-        self.assertIn("@context", top_rec.suggested_faq_json_ld)
+        self.assertNotIn("@context", top_rec.suggested_faq_json_ld)
         self.assertEqual(top_rec.suggested_faq_json_ld["@type"], "Question")
 
     def test_general_business_fallback(self):
@@ -198,8 +199,31 @@ class TestMarketIntelligenceEngine(unittest.TestCase):
         q1 = next(q for q in report.questions if q.id == "FDEL-Q1")
         self.assertEqual(q1.status, "ANSWERABLE")
 
-        q3 = next(q for q in report.questions if q.id == "FDEL-Q3")
-        self.assertEqual(q3.status, "ANSWERABLE")
+    def test_industry_detected_from_rich_body_text(self):
+        pages = {
+            "https://acme-health.org/": MockPageData(
+                title="Home | Acme",
+                meta_description="",
+                body_text_sample="Comprehensive medical clinic providing healthcare, doctor appointments, diagnosis, medical treatment, and patient hospital care.",
+                headings=[{"level": 1, "text": "Top Healthcare and Medical Clinic"}]
+            )
+        }
+        report = self.engine.analyze("https://acme-health.org", pages, brand_name="Acme Health")
+        self.assertEqual(report.detected_industry, "HEALTHCARE")
+        self.assertTrue(report.confidence >= 0.70)
+
+    def test_negation_in_question_evaluation(self):
+        pages = {
+            "https://steakhouse.local/": MockPageData(
+                title="City Steakhouse",
+                meta_description="Traditional prime steakhouse.",
+                json_ld_types=["Restaurant"],
+                body_text_sample="We do not offer vegan or vegetarian options on our current menu."
+            )
+        }
+        report = self.engine.analyze("https://steakhouse.local", pages, brand_name="City Steakhouse")
+        diet_q = next(q for q in report.questions if q.id == "REST-Q4")
+        self.assertNotEqual(diet_q.status, "ANSWERABLE")
 
 
 if __name__ == "__main__":

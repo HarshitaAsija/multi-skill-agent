@@ -43,19 +43,26 @@ class SafeHTTPClient:
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         polite_delay: float = DEFAULT_POLITE_DELAY_SECONDS,
         max_retries: int = DEFAULT_MAX_RETRIES,
-        allow_private: bool = False
+        allow_private: bool = False,
+        verify_ssl: bool = True
     ):
         self.user_agent = user_agent
         self.timeout = timeout
         self.polite_delay = polite_delay
         self.max_retries = max_retries
         self.allow_private = allow_private
+        self.verify_ssl = verify_ssl
         self._last_request_time: float = 0.0
 
-        # Permissive SSL context for auditing legacy or staging sites safely (read-only)
         self._ssl_context = ssl.create_default_context()
-        self._ssl_context.check_hostname = False
-        self._ssl_context.verify_mode = ssl.CERT_NONE
+        if not verify_ssl:
+            # Explicitly opted-out SSL verification for auditing legacy/staging environments
+            self._ssl_context.check_hostname = False
+            self._ssl_context.verify_mode = ssl.CERT_NONE
+        else:
+            # Default strict certificate & hostname verification
+            self._ssl_context.check_hostname = True
+            self._ssl_context.verify_mode = ssl.CERT_REQUIRED
 
     def _apply_polite_delay(self) -> None:
         """Enforces minimum polite delay between consecutive requests."""

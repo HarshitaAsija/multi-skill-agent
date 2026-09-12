@@ -115,10 +115,50 @@ def get_domain(url: str) -> str:
     return netloc
 
 def is_same_domain(url1: str, url2: str) -> bool:
-    """Checks whether two URLs share the exact same domain / host."""
+    """
+    Checks whether two URLs share the same domain / host.
+    Applies conservative apex <-> www symmetry:
+    'example.com' and 'www.example.com' are treated as the same domain.
+    Does not allow arbitrary cross-subdomain traversal without PSL awareness.
+    """
     d1 = get_domain(url1)
     d2 = get_domain(url2)
-    return bool(d1 and d2 and d1 == d2)
+    if not d1 or not d2:
+        return False
+    if d1 == d2:
+        return True
+    if d1.startswith("www.") and d1[4:] == d2:
+        return True
+    if d2.startswith("www.") and d2[4:] == d1:
+        return True
+    return False
+
+def get_host_alias(url: str) -> Optional[str]:
+    """
+    Generates the counterpart host alias URL:
+    - 'example.com' -> 'www.example.com'
+    - 'www.example.com' -> 'example.com'
+    Preserves scheme, path, query, and port. Returns None if host cannot be aliased.
+    """
+    if not is_valid_url(url):
+        return None
+    parsed = urlparse(url.strip())
+    host = parsed.hostname or ""
+    if not host:
+        return None
+
+    # Determine counterpart host
+    if host.lower().startswith("www."):
+        alias_host = host[4:]
+    else:
+        alias_host = f"www.{host}"
+
+    # Reconstruct netloc with original port if present
+    netloc = alias_host
+    if parsed.port:
+        netloc = f"{alias_host}:{parsed.port}"
+
+    return urlunparse((parsed.scheme, netloc, parsed.path or "/", parsed.params, parsed.query, parsed.fragment))
 
 def resolve_relative_url(base_url: str, relative_url: str) -> Optional[str]:
     """Resolves a relative URL string against a base URL."""

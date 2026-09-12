@@ -212,12 +212,25 @@ class TestOrchestratorGeminiIntegration(unittest.TestCase):
         mock_gemini.generate_executive_synthesis.return_value = "Test executive synthesis paragraph."
 
         orch = Orchestrator(gemini_client=mock_gemini)
-        # Mock crawl skill to return simple homepage
+        # Mock crawl skill to return simple homepage with valid PageData attributes
+        mock_pdata = MagicMock()
+        mock_pdata.title = "Example"
+        mock_pdata.meta_description = "Example meta"
+        mock_pdata.body_text_sample = "Example text"
+        mock_pdata.headings = []
+        mock_pdata.h1_tags = []
+        mock_pdata.url = "https://example.com"
+        mock_pdata.json_ld_types = []
+        mock_pdata.json_ld_blocks = []
+        mock_pdata.page_title_brand = "Example"
+        mock_pdata.button_cta_labels = []
+        mock_pdata.footer_text = ""
+
         mock_crawl = MagicMock()
         mock_crawl.run.return_value = {
             "findings": [],
             "pages": ["https://example.com"],
-            "page_data_map": {}
+            "page_data_map": {"https://example.com": mock_pdata}
         }
         orch.crawl_skill = mock_crawl
         orch.freshness_skill = MagicMock()
@@ -230,6 +243,27 @@ class TestOrchestratorGeminiIntegration(unittest.TestCase):
         self.assertEqual(report["executive_synthesis"], "Test executive synthesis paragraph.")
         self.assertEqual(len(report["proactive_recommendations"]), 3)
         self.assertEqual(report["proactive_recommendations"][0]["id"], "REC-AI-01")
+
+    def test_orchestrator_hard_crawl_gate_abstains_gemini(self):
+        """Verify that when 0 pages are crawled, orchestrator abstains from Gemini synthesis."""
+        mock_gemini = MagicMock()
+        mock_gemini.is_available.return_value = True
+
+        orch = Orchestrator(gemini_client=mock_gemini)
+        mock_crawl = MagicMock()
+        mock_crawl.run.return_value = {
+            "findings": [],
+            "pages": [],
+            "page_data_map": {}
+        }
+        orch.crawl_skill = mock_crawl
+        report = orch.run_audit("https://example.com")
+
+        self.assertIsNone(report.get("ai_readiness_score"))
+        self.assertEqual(report.get("score_status"), "NOT_COMPUTED")
+        self.assertIn("Audit Incomplete: The crawler could not retrieve page content", report.get("executive_synthesis", ""))
+        self.assertIsNone(report.get("market_intelligence"))
+        mock_gemini.generate_executive_synthesis.assert_not_called()
 
 
 if __name__ == "__main__":

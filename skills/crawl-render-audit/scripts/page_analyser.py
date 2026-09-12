@@ -51,7 +51,7 @@ class PageData:
         self.images_missing_alt: List[str] = []         # Image src without alt text
         self.raw_text_length: int = 0                    # Text length from raw HTML body
         self.word_count: int = 0                         # Word count estimate
-        self.body_text_sample: str = ""                  # First 2000 chars of visible text
+        self.body_text_sample: str = ""                  # Up to 8000 chars of visible text
         self.button_cta_labels: List[str] = []           # Button / CTA label text
         self.footer_text: str = ""                       # Footer text (for copyright scanning)
         self.has_h1: bool = False
@@ -336,7 +336,7 @@ class PageAnalyser:
         visible_text = re.sub(r"\s+", " ", visible_text).strip()
         data.raw_text_length = len(visible_text)
         data.word_count = len(visible_text.split())
-        data.body_text_sample = visible_text[:2000]
+        data.body_text_sample = visible_text[:8000]
         data.text_to_html_ratio = round(data.raw_text_length / max(1, raw_html_len), 3) if raw_html_len > 0 else 0.0
 
     # ------------------------------------------------------------------ #

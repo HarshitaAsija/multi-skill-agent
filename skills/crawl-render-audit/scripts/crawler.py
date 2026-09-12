@@ -16,11 +16,14 @@ from typing import List, Tuple, Optional, Dict, Set, Any
 from urllib.parse import urlparse
 
 from shared.http_client import SafeHTTPClient, HTTPResponse
-from shared.url_utils import normalize_url, is_valid_url, is_same_domain, URLDeduplicator
+from shared.url_utils import normalize_url, is_valid_url, is_same_domain, URLDeduplicator, get_host_alias
 from shared.logging_utils import get_logger
 from .robots_parser import RobotsParseResult
 
 logger = get_logger("crawler")
+
+# Bot-management, WAF challenges, or connection failures that trigger an apex <-> www host alias retry
+FALLBACK_TRIGGER_STATUSES = {0, 403, 429, 503}
 
 # Content-type prefixes we want to crawl (HTML pages only)
 _CRAWLABLE_CONTENT_TYPES = ["text/html", "application/xhtml+xml"]
@@ -126,6 +129,8 @@ class BoundedCrawler:
         self.max_depth = max_depth
         self.per_host_delay = per_host_delay
         self.max_crawl_seconds = max_crawl_seconds
+        self.host_alias_used: Optional[str] = None
+        self.attempted_alias: Optional[str] = None
 
     def crawl(
         self,
@@ -202,13 +207,43 @@ class BoundedCrawler:
             resp = self.http_client.fetch(url)
             host_last_request[host] = time.time()
 
+            # Trade-off note: Bare apex domains on modern CDNs/WAFs frequently challenge bots or redirect
+            # to heavy client-side app shells (e.g., open.spotify.com). Conservative apex <-> www symmetry
+            # allows falling back to www.<host> (or vice-versa) to locate readable marketing content.
+            # Trigger fallback on connection drops (status 0) or bot-management status codes (403, 429, 503).
+            if not resp.is_success and (depth == 0 or len(crawled) == 0) and not self.attempted_alias:
+                if resp.status_code in FALLBACK_TRIGGER_STATUSES or not resp.is_success:
+                    alias = get_host_alias(url)
+                    if alias and alias != url:
+                        self.attempted_alias = alias
+                        logger.info(f"Root URL {url} returned HTTP {resp.status_code} ({resp.error or 'Failed'}). Attempting host alias fallback: {alias}")
+                        alias_resp = self.http_client.fetch(alias)
+                        if alias_resp.is_success:
+                            self.host_alias_used = alias
+                            logger.info(f"Host alias {alias} succeeded (HTTP {alias_resp.status_code}). Switching crawl root to alias.")
+                            url = alias
+                            resp = alias_resp
+                            host = urlparse(url).netloc
+                            host_last_request[host] = time.time()
+                        else:
+                            logger.warning(f"Host alias {alias} also failed (HTTP {alias_resp.status_code}): {alias_resp.error}")
+
             if not resp.is_success:
                 logger.warning(f"  HTTP {resp.status_code} for {url}: {resp.error or 'Failed'}")
                 continue
 
-            # Filter non-HTML content
+            # Filter non-HTML content.
+            # Some CDN/WAF-backed sites (e.g. Spotify) return HTTP 200 with a full HTML body but
+            # omit the Content-Type response header entirely.  Fall back to body-sniff so we don't
+            # silently discard valid pages just because a header is missing.
             ct = (resp.content_type or "").lower()
-            if not any(ct.startswith(t) for t in _CRAWLABLE_CONTENT_TYPES):
+            is_crawlable_ct = any(ct.startswith(t) for t in _CRAWLABLE_CONTENT_TYPES)
+            if not is_crawlable_ct and not ct:
+                body_snip = (resp.body or "").lstrip()[:100].lower()
+                is_crawlable_ct = body_snip.startswith("<!doctype html") or body_snip.startswith("<html")
+                if is_crawlable_ct:
+                    logger.debug(f"  Content-Type absent; body sniff detected HTML at {url}")
+            if not is_crawlable_ct:
                 logger.debug(f"  Skipping non-HTML content-type '{ct}' at {url}")
                 continue
 

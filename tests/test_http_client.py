@@ -27,5 +27,19 @@ class TestHTTPClient(unittest.TestCase):
         self.assertEqual(resp.status_code, 0)
         self.assertIn("Invalid URL", resp.error)
 
+    def test_http_client_ssl_verification_default_enabled(self):
+        import ssl
+        client = SafeHTTPClient()
+        self.assertTrue(client.verify_ssl)
+        self.assertTrue(client._ssl_context.check_hostname)
+        self.assertEqual(client._ssl_context.verify_mode, ssl.CERT_REQUIRED)
+
+    def test_http_client_ssl_verification_can_be_disabled(self):
+        import ssl
+        client = SafeHTTPClient(verify_ssl=False)
+        self.assertFalse(client.verify_ssl)
+        self.assertFalse(client._ssl_context.check_hostname)
+        self.assertEqual(client._ssl_context.verify_mode, ssl.CERT_NONE)
+
 if __name__ == "__main__":
     unittest.main()

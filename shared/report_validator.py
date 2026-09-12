@@ -35,9 +35,17 @@ def validate_report(report: Dict[str, Any]) -> Tuple[bool, List[str]]:
     if not isinstance(report.get("audited_at"), str) or not report["audited_at"]:
         errors.append("Missing or invalid 'audited_at' field (must be ISO 8601 string)")
 
+    score_status = report.get("score_status", "COMPUTED")
+    if score_status not in {"COMPUTED", "NOT_COMPUTED"}:
+        errors.append("Invalid 'score_status' field (must be 'COMPUTED' or 'NOT_COMPUTED')")
+
     score = report.get("ai_readiness_score")
-    if not isinstance(score, int) or not (0 <= score <= 100):
-        errors.append("Missing or invalid 'ai_readiness_score' field (must be an integer between 0 and 100)")
+    if score_status == "NOT_COMPUTED":
+        if score is not None:
+            errors.append("'ai_readiness_score' must be null when score_status is 'NOT_COMPUTED'")
+    else:
+        if not isinstance(score, int) or not (0 <= score <= 100):
+            errors.append("Missing or invalid 'ai_readiness_score' field (must be an integer between 0 and 100 when COMPUTED)")
 
     summary = report.get("summary")
     if not isinstance(summary, dict):
@@ -80,6 +88,16 @@ def validate_report(report: Dict[str, Any]) -> Tuple[bool, List[str]]:
             errors.append("'market_intelligence' field must be an object")
         else:
             errors.extend(_validate_market_intelligence(mi))
+
+    if "crawl_metadata" in report:
+        cm = report["crawl_metadata"]
+        if not isinstance(cm, dict):
+            errors.append("'crawl_metadata' field must be an object")
+        else:
+            if not isinstance(cm.get("pages_crawled"), int) or cm.get("pages_crawled") < 0:
+                errors.append("crawl_metadata.pages_crawled must be a non-negative integer")
+            if "homepage_reachable" in cm and not isinstance(cm.get("homepage_reachable"), bool):
+                errors.append("crawl_metadata.homepage_reachable must be a boolean")
 
     is_valid = len(errors) == 0
     return is_valid, errors

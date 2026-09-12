@@ -2,9 +2,9 @@
 
 [![Adobe University Hackathon 2026](https://img.shields.io/badge/Adobe%20Hackathon-Round%203%20Submission-FF0000.svg)](https://github.com/HarshitaAsija/multi-skill-agent)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-86%20Passed-brightgreen.svg)](tests/)
-[![Package Size](https://img.shields.io/badge/Package-125%20KB-success.svg)](agent-skill-marketplace-submission.zip)
-[![AI Engine](https://img.shields.io/badge/AI%20Engine-Google%20Gemini%202.5%20Flash-4285F4.svg)](#)
+[![Tests](https://img.shields.io/badge/Tests-98%20Passed-brightgreen.svg)](tests/)
+[![Package Size](https://img.shields.io/badge/Package-134%20KB-success.svg)](agent-skill-marketplace-submission.zip)
+[![AI Engine](https://img.shields.io/badge/AI%20Engine-Google%20Gemini%20Flash%20Latest-4285F4.svg)](#)
 [![Security](https://img.shields.io/badge/Security-SSRF%20%26%20Secret%20Hardened-brightgreen.svg)](#)
 
 ---
@@ -18,7 +18,7 @@ Point it at any website URL and it automatically audits two things:
 
 It produces a structured JSON report plus an optional Markdown document with a 0–100 AI Readiness Score, a prioritized list of technical findings, ready-to-paste schema fixes, and deep question gap analysis.
 
-Powered by **Google Gemini 2.5 Flash** for real semantic content evaluation and site-tailored recommendations, with zero heavy external packages — built purely using Python standard library HTTP calling Google's REST API.
+Powered by **Google Gemini Flash Latest** for real semantic content evaluation and site-tailored recommendations, with zero heavy external packages — built purely using Python standard library HTTP calling Google's REST API.
 
 ---
 
@@ -37,7 +37,7 @@ run_audit.py  (CLI entrypoint)
 |  - Deduplicates & calibrates findings    |
 |  - Computes AI Readiness Score (0-100)   |
 |  - Runs Market Intelligence Engine       |
-|  - Invokes Google Gemini 2.5 Flash       |
+|  - Invokes Google Gemini Flash Latest       |
 |  - Emits JSON + optional Markdown report |
 +--------+-----------+--------------------+
          |           |           |
@@ -85,7 +85,7 @@ The coordinator. Collects raw findings from all three specialists, strips per-UR
 
 ---
 
-## Dual-Engine Intelligence: Google Gemini 2.5 Flash + Deterministic Heuristics
+## Dual-Engine Intelligence: Google Gemini Flash Latest + Deterministic Heuristics
 
 The system combines real LLM semantic reasoning with rigorous structural diagnostics:
 
@@ -131,7 +131,8 @@ The engine automatically detects the business domain across 10 verticals:
 | DISC-00 | Domain unreachable / DNS failure / connection timeout | CRITICAL |
 | DISC-01 | AI scrapers blocked in `robots.txt` (GPTBot, ClaudeBot, PerplexityBot, OAI-SearchBot) | HIGH |
 | DISC-02 | Missing or unreachable XML sitemap | MEDIUM |
-| DISC-03 | Sitemap entries missing `<lastmod>` timestamps | LOW |
+| DISC-02B | Sitemap entries missing `<lastmod>` timestamps | LOW |
+| DISC-02C | Sitemap index degraded — majority of sub-sitemaps failed to parse | MEDIUM |
 | DISC-04 | Meta robots `noindex` blocking AI indexation | HIGH |
 | DISC-05 | Missing or malformed `<link rel="canonical">` | LOW |
 | DISC-06 | Missing OpenGraph / Twitter Card social metadata | LOW |
@@ -207,8 +208,8 @@ Score = max(0, 100 - sum of all deductions)
 | HTTP operations | GET / HEAD only — strictly read-only |
 | Runtime dependencies | `beautifulsoup4` only |
 | External packages | None (Gemini API called via Python standard library) |
-| Package size | **~120 KB** (contest limit: 50 MB) |
-| Test suite | **69 tests**, zero failures |
+| Package size | **~134 KB** (contest limit: 50 MB) |
+| Test suite | **98 tests**, zero failures |
 
 ---
 
@@ -260,6 +261,7 @@ python run_audit.py --url https://example.com --output report.json
 | `--output` | Write JSON report to a file (stdout if omitted) | stdout |
 | `--gemini-api-key` | Google Gemini API Key for LLM reasoning | `None` (reads env) |
 | `--allow-private` | Permit auditing private/loopback IPs (disabled by default for SSRF safety) | `false` |
+| `--insecure` | Disable TLS certificate verification (use only for testing behind self-signed certs) | `false` |
 | `--debug` | Enable verbose debugging stack traces | `false` |
 | `--max-pages` | Maximum pages to crawl (1–200) | `40` |
 | `--max-depth` | Maximum link depth from root (1–10) | `4` |
@@ -275,7 +277,7 @@ python -m pytest tests/ -q
 python -m unittest discover tests
 ```
 
-Expected: `86 passed` in under 5 seconds.
+Expected: `98 passed` in under 10 seconds.
 
 ---
 
@@ -285,4 +287,4 @@ Expected: `86 passed` in under 5 seconds.
 python scripts/package_submission.py
 ```
 
-Runs all 86 tests, validates `marketplace.json` and all `SKILL.md` files against the agentskills.io schema, builds the submission zip, checks the archive is under 50 MB, and does a standalone CLI smoke test from the unpacked archive. All four steps must show `[PASS]`.
+Runs all 98 tests, validates `marketplace.json` and all `SKILL.md` files against the agentskills.io schema, builds the submission zip, checks the archive is under 50 MB, and does a standalone CLI smoke test from the unpacked archive. All four steps must show `[PASS]`.

@@ -75,9 +75,10 @@ class MarketIntelligenceReport:
     questions: List[QuestionCheckResult] = field(default_factory=list)
     question_gaps: List[str] = field(default_factory=list)
     roadmap: List[SmartRoadmapItem] = field(default_factory=list)
+    sub_vertical: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        data = {
             "detected_industry": self.detected_industry,
             "industry_label": self.industry_label,
             "confidence": self.confidence,
@@ -90,6 +91,9 @@ class MarketIntelligenceReport:
             "question_gaps": self.question_gaps,
             "roadmap": [r.to_dict() for r in self.roadmap],
         }
+        if self.sub_vertical:
+            data["sub_vertical"] = self.sub_vertical
+        return data
 
 
 class MarketIntelligenceEngine:
@@ -986,7 +990,6 @@ class MarketIntelligenceEngine:
                 question_gaps.append(q_def["question"])
 
             faq_snippet = {
-                "@context": "https://schema.org",
                 "@type": "Question",
                 "name": q_def["faq_q"],
                 "acceptedAnswer": {
@@ -1065,7 +1068,6 @@ class MarketIntelligenceEngine:
             faq_a = item.get("faq_a", fb.get("faq_a", "Information not explicitly stated on website."))
 
             faq_snippet = {
-                "@context": "https://schema.org",
                 "@type": "Question",
                 "name": faq_q,
                 "acceptedAnswer": {
@@ -1099,11 +1101,12 @@ class MarketIntelligenceEngine:
         coverage_pct = round(((clear_count * 1.0 + partial_count * 0.5) / max(1, total_q)) * 100) if total_q else 0
         roadmap = self._build_roadmap(q_results, fallback_q_defs)
 
-        refined_label = gemini_res.get("detected_industry_refined") or industry_label
+        refined_label = gemini_res.get("detected_industry_refined")
+        sub_vertical = refined_label if refined_label and refined_label != industry_label else None
 
         return MarketIntelligenceReport(
             detected_industry=detected_ind,
-            industry_label=refined_label,
+            industry_label=industry_label,  # Strictly anchored to canonical taxonomy
             confidence=max(confidence, 0.95),
             market_question_coverage_pct=coverage_pct,
             questions_checked=total_q,
@@ -1113,6 +1116,7 @@ class MarketIntelligenceEngine:
             questions=q_results,
             question_gaps=question_gaps,
             roadmap=roadmap,
+            sub_vertical=sub_vertical,
         )
 
     def _detect_industry(self, page_data_map: Dict[str, Any]) -> (str, float):
@@ -1123,7 +1127,20 @@ class MarketIntelligenceEngine:
 
         for url, pdata in page_data_map.items():
             url_lower = url.lower()
-            text_lower = (getattr(pdata, "meta_description", "") or "").lower() + " " + (getattr(pdata, "title", "") or "").lower()
+            page_text_parts = [
+                getattr(pdata, "meta_description", "") or "",
+                getattr(pdata, "title", "") or "",
+                getattr(pdata, "body_text_sample", "") or "",
+            ]
+            if hasattr(pdata, "headings") and pdata.headings:
+                for h in pdata.headings:
+                    if isinstance(h, dict) and "text" in h:
+                        page_text_parts.append(h["text"])
+                    elif isinstance(h, str):
+                        page_text_parts.append(h)
+            if hasattr(pdata, "h1_tags") and pdata.h1_tags:
+                page_text_parts.extend(pdata.h1_tags)
+            text_lower = " ".join(page_text_parts).lower()
             json_types = set(getattr(pdata, "json_ld_types", []) or [])
 
             for ind, defs in self.INDUSTRY_DEFINITIONS.items():
@@ -1154,12 +1171,21 @@ class MarketIntelligenceEngine:
         text_lower = aggregated_text.lower()
 
         regex_pat = q_def.get("regex_strong")
-        if regex_pat and re.search(regex_pat, text_lower, re.IGNORECASE):
-            m = re.search(regex_pat, text_lower, re.IGNORECASE).group(0)[:60]
-            return "ANSWERABLE", f"Found explicit text pattern: '{m}'"
+        if regex_pat:
+            m_match = re.search(regex_pat, text_lower, re.IGNORECASE)
+            if m_match:
+                m = m_match.group(0)[:60]
+                prefix = text_lower[max(0, m_match.start() - 35):m_match.start()]
+                if re.search(r"(?:no|not|don't|do not|never|without|exclude|excluding|lack)\s+(?:\w+\s+)*$", prefix):
+                    return "PARTIAL", f"Found negative or qualified mention for '{m}', lacks affirmative details."
+                return "ANSWERABLE", f"Found explicit text pattern: '{m}'"
 
         for kw in q_def.get("keywords_strong", []):
             if kw in text_lower:
+                # Basic negation check: if preceded by explicit negation within 4 words
+                neg_pattern = rf"(?:no|not|don't|do not|never|without|exclude|excluding|lack)\s+(?:\w+\s+){{0,3}}{re.escape(kw)}"
+                if re.search(neg_pattern, text_lower):
+                    return "PARTIAL", f"Found negative/qualified mention for '{kw}', lacks affirmative answer."
                 return "ANSWERABLE", f"Found authoritative keyword phrase: '{kw}'"
 
         for pkw in q_def.get("keywords_partial", []):
@@ -1209,13 +1235,13 @@ class MarketIntelligenceEngine:
                 for h in pdata.headings:
                     if isinstance(h, dict) and "text" in h:
                         chunks.append(h["text"])
-            if hasattr(pdata, "button_cta_labels") and pdata.button_cta_labels:
-                chunks.extend(pdata.button_cta_labels)
-            if hasattr(pdata, "body_text_sample") and pdata.body_text_sample:
+            if hasattr(pdata, "button_cta_labels") and pdata.button_cta_labels and isinstance(pdata.button_cta_labels, list):
+                chunks.extend([str(c) for c in pdata.button_cta_labels if isinstance(c, str)])
+            if hasattr(pdata, "body_text_sample") and pdata.body_text_sample and isinstance(pdata.body_text_sample, str):
                 chunks.append(pdata.body_text_sample)
-            if hasattr(pdata, "footer_text") and pdata.footer_text:
+            if hasattr(pdata, "footer_text") and pdata.footer_text and isinstance(pdata.footer_text, str):
                 chunks.append(pdata.footer_text)
-        return " ".join(chunks)
+        return " ".join([c for c in chunks if isinstance(c, str)])
 
     def _aggregate_json_ld_types(self, page_data_map: Dict[str, Any]) -> List[str]:
         types: List[str] = []

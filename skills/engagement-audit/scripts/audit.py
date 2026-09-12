@@ -74,7 +74,7 @@ class EngagementAuditSkill:
             if not pdata.has_h1 and pdata.word_count < 30:
                 evidence = EvidenceBuilder.build(
                     source_url=pdata.url,
-                    observation=f"Landing page has zero <h1> headings and only {pdata.word_count} visible words in the top viewport section.",
+                    observation=f"Landing page has zero <h1> headings and only {pdata.word_count} total visible words on the page.",
                     detection_method="Hero Section Content Analyzer",
                     relevance="First-time human visitors and AI agents arriving on a landing page require a clear <h1> title and descriptive value proposition within 3 seconds to understand what the product/brand offers.",
                     confidence=0.90

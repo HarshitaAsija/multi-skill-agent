@@ -154,7 +154,10 @@ class TestOrchestrator(unittest.TestCase):
         disc_00 = [f for f in findings if "DISC-00-UNREACHABLE" in f["id"]]
         self.assertTrue(len(disc_00) > 0, msg="Expected DISC-00-UNREACHABLE finding on timeout")
         self.assertEqual(disc_00[0]["severity"], "CRITICAL")
-        self.assertTrue(result.get("ai_readiness_score") < 100)
+        self.assertIsNone(result.get("ai_readiness_score"), msg="Score must be None when 0 pages crawled")
+        self.assertEqual(result.get("score_status"), "NOT_COMPUTED")
+        self.assertEqual(result.get("crawl_metadata", {}).get("crawl_status"), "FAILED_ZERO_PAGES")
+        self.assertIsNone(result.get("market_intelligence"), msg="Market intelligence must abstain on 0 pages")
 
 
 if __name__ == "__main__":

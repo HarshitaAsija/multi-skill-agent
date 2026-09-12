@@ -148,9 +148,11 @@ class AuditResult:
     summary: SeveritySummary = field(default_factory=SeveritySummary)
     findings: List[Finding] = field(default_factory=list)
     proactive_recommendations: List[ProactiveRecommendation] = field(default_factory=list)
-    ai_readiness_score: int = 100  # 0-100 composite score, computed after deduplication
+    ai_readiness_score: Optional[int] = None  # None when crawl yields 0 pages or unmeasured
+    score_status: str = "NOT_COMPUTED"        # "COMPUTED" | "NOT_COMPUTED"
     market_intelligence: Optional[Dict[str, Any]] = None
     executive_synthesis: Optional[str] = None
+    crawl_metadata: Optional[Dict[str, Any]] = None
 
     def calculate_summary(self) -> None:
         """Recalculates counts by severity from current findings list."""
@@ -173,10 +175,13 @@ class AuditResult:
             "site": self.site,
             "audited_at": self.audited_at,
             "ai_readiness_score": self.ai_readiness_score,
+            "score_status": self.score_status,
             "summary": self.summary.to_dict(),
             "findings": [f.to_dict() for f in self.findings],
             "proactive_recommendations": [r.to_dict() for r in self.proactive_recommendations],
         }
+        if self.crawl_metadata is not None:
+            result["crawl_metadata"] = self.crawl_metadata
         if self.market_intelligence is not None:
             result["market_intelligence"] = self.market_intelligence
         if self.executive_synthesis is not None:

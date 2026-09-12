@@ -204,37 +204,128 @@ class CrawlRenderAuditSkill:
                 )
             )
             findings.append(finding)
-        elif not sitemap.has_lastmod:
+        elif len(sitemap.entries) == 0:
+            obs = (
+                f"Sitemap at {sitemap.sitemap_url} was reachable (HTTP {sitemap.http_status}) but failed XML parsing with syntax errors: {sitemap.error or 'Malformed XML syntax'}."
+                if sitemap.has_syntax_errors
+                else f"Sitemap at {sitemap.sitemap_url} was reachable (HTTP {sitemap.http_status}) but yielded zero valid same-domain page URLs."
+            )
             evidence = EvidenceBuilder.build(
                 source_url=sitemap.sitemap_url or root_url,
-                observation=f"Sitemap at {sitemap.sitemap_url} contains {len(sitemap.entries)} URLs but zero <lastmod> modification timestamps.",
+                observation=obs,
                 detection_method="Sitemap XML Parser",
-                relevance="AI search systems prioritize content recency. Without <lastmod> timestamps in sitemaps, AI crawlers cannot determine when facts or pages were updated.",
+                relevance="A sitemap that fails XML parsing or contains zero valid URLs cannot be ingested by AI search engine crawlers, leaving the site dependent on link traversal alone.",
                 confidence=0.95,
                 http_status=sitemap.http_status,
-                extra_data={"url_count": len(sitemap.entries)}
+                extra_data={
+                    "syntax_errors": sitemap.parse_errors,
+                    "has_syntax_errors": sitemap.has_syntax_errors
+                }
             )
             finding = Finding(
-                id="DISC-03-SITEMAP-NO-LASTMOD",
-                title="Sitemap Lacks Content Modification Timestamps (<lastmod>)",
+                id="DISC-02B-SITEMAP-PARSE-ERROR",
+                title="Sitemap XML Unparseable or Yields Zero Valid URLs",
                 category=CATEGORY_AI_DISCOVERABILITY,
-                severity=SEVERITY_LOW,
+                severity=SEVERITY_MEDIUM,
                 confidence=0.95,
                 evidence=evidence,
-                rationale="Missing <lastmod> XML tags prevent AI search indexers from prioritizing updated content, causing search bots to fetch stale cached versions.",
+                rationale="Malformed XML syntax, unclosed tokens, or missing <loc> tags in sitemap.xml prevent automated AI ingestion engines from discovering site pages.",
                 affected_urls=[sitemap.sitemap_url or root_url],
                 suggested_action=SuggestedAction(
-                    summary="Include ISO 8601 <lastmod> date timestamps for all entries in sitemap.xml.",
-                    priority=3,
+                    summary="Repair XML syntax errors in sitemap and verify that valid canonical URLs are emitted.",
+                    priority=2,
                     remediation_steps=[
-                        "Configure your CMS or sitemap generator to emit <lastmod>YYYY-MM-DD</lastmod> tags.",
-                        "Ensure timestamp updates whenever page content is modified."
+                        "Validate sitemap XML against the sitemaps.org schema standard.",
+                        "Fix any unescaped ampersands or unclosed XML elements.",
+                        "Ensure sitemap index sub-files return valid XML content."
                     ],
-                    expected_impact="Improves AI index recency signals for fresh content.",
+                    expected_impact="Restores machine crawler indexation from the sitemap.",
                     effort_estimate="LOW"
                 )
             )
             findings.append(finding)
+        else:
+            # Check for severe degradation across sub-sitemaps (>50% failed)
+            is_degraded = (
+                getattr(sitemap, "sub_sitemaps_attempted", 0) > 1
+                and (getattr(sitemap, "sub_sitemaps_failed", 0) / sitemap.sub_sitemaps_attempted) >= 0.5
+            )
+            if is_degraded:
+                evidence = EvidenceBuilder.build(
+                    source_url=sitemap.sitemap_url or root_url,
+                    observation=(
+                        f"Sitemap index at {sitemap.sitemap_url} suffered XML parse failures on "
+                        f"{sitemap.sub_sitemaps_failed} of {sitemap.sub_sitemaps_attempted} sub-sitemaps attempted, "
+                        f"recovering only {len(sitemap.entries)} valid URLs."
+                    ),
+                    detection_method="Sitemap XML Parser",
+                    relevance=(
+                        "A severely degraded sitemap index prevents AI search engine crawlers from discovering "
+                        "the vast majority of catalog URLs, leaving AI engines with an incomplete view of the site."
+                    ),
+                    confidence=0.95,
+                    http_status=sitemap.http_status,
+                    extra_data={
+                        "sub_sitemaps_attempted": sitemap.sub_sitemaps_attempted,
+                        "sub_sitemaps_failed": sitemap.sub_sitemaps_failed,
+                        "syntax_errors": sitemap.parse_errors,
+                        "recovered_urls": len(sitemap.entries),
+                    }
+                )
+                finding = Finding(
+                    id="DISC-02C-SITEMAP-DEGRADED",
+                    title="Sitemap Index Severely Degraded by Sub-Sitemap Failures",
+                    category=CATEGORY_AI_DISCOVERABILITY,
+                    severity=SEVERITY_MEDIUM,
+                    confidence=0.95,
+                    evidence=evidence,
+                    rationale="High failure rate (>50%) among declared sub-sitemaps indicates broken XML feeds or unclosed tokens that conceal large sections of the site from AI crawlers.",
+                    affected_urls=[sitemap.sitemap_url or root_url],
+                    suggested_action=SuggestedAction(
+                        summary="Repair failing sub-sitemaps in the sitemap index to restore full catalog crawlability.",
+                        priority=2,
+                        remediation_steps=[
+                            "Validate each child sitemap listed in the sitemap index against the sitemaps.org XML schema.",
+                            "Fix unclosed XML tokens or trailing syntax errors in child sitemap feeds.",
+                            "Ensure child sitemap endpoints return HTTP 200 with well-formed XML."
+                        ],
+                        expected_impact="Restores full catalog discovery for generative search and AI search engines.",
+                        effort_estimate="LOW"
+                    )
+                )
+                findings.append(finding)
+
+            if not sitemap.has_lastmod:
+                evidence = EvidenceBuilder.build(
+                    source_url=sitemap.sitemap_url or root_url,
+                    observation=f"Sitemap at {sitemap.sitemap_url} contains {len(sitemap.entries)} valid URLs but zero <lastmod> modification timestamps.",
+                    detection_method="Sitemap XML Parser",
+                    relevance="AI search systems prioritize content recency. Without <lastmod> timestamps in sitemaps, AI crawlers cannot determine when facts or pages were updated.",
+                    confidence=0.95,
+                    http_status=sitemap.http_status,
+                    extra_data={"url_count": len(sitemap.entries)}
+                )
+                finding = Finding(
+                    id="DISC-03-SITEMAP-NO-LASTMOD",
+                    title="Sitemap Lacks Content Modification Timestamps (<lastmod>)",
+                    category=CATEGORY_AI_DISCOVERABILITY,
+                    severity=SEVERITY_LOW,
+                    confidence=0.95,
+                    evidence=evidence,
+                    rationale="Missing <lastmod> XML tags prevent AI search indexers from prioritizing updated content, causing search bots to fetch stale cached versions.",
+                    affected_urls=[sitemap.sitemap_url or root_url],
+                    suggested_action=SuggestedAction(
+                        summary="Include ISO 8601 <lastmod> date timestamps for all entries in sitemap.xml.",
+                        priority=3,
+                        remediation_steps=[
+                            "Configure your CMS or sitemap generator to emit <lastmod>YYYY-MM-DD</lastmod> tags.",
+                            "Ensure timestamp updates whenever page content is modified."
+                        ],
+                        expected_impact="Improves AI index recency signals for fresh content.",
+                        effort_estimate="LOW"
+                    )
+                )
+                findings.append(finding)
 
     def _check_meta_robots_noindex(self, pdata: PageData, findings: List[Finding]) -> None:
         if pdata.meta_robots and "noindex" in pdata.meta_robots.lower():
@@ -399,13 +490,21 @@ class CrawlRenderAuditSkill:
     ) -> None:
         status = responses[0].status_code if responses else 0
         error = responses[0].error if responses else "Unreachable"
+        attempted_alias = getattr(self.crawler, "attempted_alias", None)
+        obs = f"Primary HTTP GET request failed with status code {status}. Error: {error}"
+        extra_data = {}
+        if attempted_alias:
+            obs += f" (Host alias fallback retry on '{attempted_alias}' was also attempted and failed)"
+            extra_data["attempted_urls"] = [target_url, attempted_alias]
+
         evidence = EvidenceBuilder.build(
             source_url=target_url,
-            observation=f"Primary HTTP GET request failed with status code {status}. Error: {error}",
+            observation=obs,
             detection_method="HTTP GET Fetch",
             relevance="An unreachable target URL prevents machine agents and human users from accessing the site.",
             confidence=1.0,
-            http_status=status
+            http_status=status,
+            extra_data=extra_data if extra_data else None
         )
         finding = Finding(
             id="DISC-00-UNREACHABLE",

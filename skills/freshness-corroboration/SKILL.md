@@ -6,26 +6,28 @@ description: Audits temporal freshness signals, copyright recency, publication t
 # freshness-corroboration
 
 ## Overview
-Evaluates temporal signals (outdated copyright years, missing modified dates) and verifies that entity identity facts (company name, contact details, core attributes) remain consistent across audited pages.
+Evaluates temporal freshness signals (copyright years, article modification timestamps) and conducts intra-site factual corroboration (verifying that entity identity, company name, brand claims, and contact attributes remain consistent and uncontradicted across multiple pages on the audited domain).
 
 ## When to Use
-Invoked by `audit-orchestrator` during the audit phase.
+Invoked by `audit-orchestrator` during the comprehensive site audit phase.
 
 ## Inputs
 - `pages`: List of crawled page objects containing extracted text and HTTP metadata
 - `http_client`: Shared HTTP client
+- `page_data_map`: Mapping of URL to structured PageData objects
 
 ## Outputs
 - List of `Finding` objects under `factual_freshness` category.
 
 ## Procedure
 1. Scan page footers and meta tags for copyright years and publication dates.
-2. Flag copyright dates older than the current calendar year.
-3. Extract core brand claims (organization name, primary contact) across pages.
-4. Detect discrepancies between homepage claims and subpage claims.
+2. Flag copyright dates older than the current calendar year (`FRESH-01`).
+3. Corroborate core brand and entity statements (e.g. JSON-LD Organization name vs page title brands) across homepage and subpages (`FRESH-02`).
+4. Detect stale editorial content lacking recent updates or clear publication anchors (`FRESH-03`).
+5. Verify brand naming consistency across page title suffixes.
 
-## Constraints
-- Safe, bounded checks only. No un-bounded web searches across external third-party sites.
+## Constraints & Security Boundary
+- **Bounded Verification**: Audits intra-domain cross-page claim consistency and declared entity links. Operates strictly within polite crawler bounds without executing unbounded third-party web crawling.
 
 ## Failure Handling
 - If text extraction fails on a specific page, skip and continue evaluating remaining pages.

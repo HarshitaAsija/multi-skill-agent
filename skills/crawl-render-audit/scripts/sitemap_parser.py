@@ -28,8 +28,9 @@ _NS_SITEMAP = "http://www.sitemaps.org/schemas/sitemap/0.9"
 _NS_MAP = {"sm": _NS_SITEMAP}
 
 # Safety caps
-MAX_SITEMAP_URLS = 500       # Max URLs to extract per sitemap
-MAX_SITEMAP_INDEX_DEPTH = 1  # Only follow one level of sitemap index
+MAX_SITEMAP_URLS = 500          # Max URLs to extract per sitemap
+MAX_SITEMAP_INDEX_DEPTH = 1     # Only follow one level of sitemap index
+MAX_SUB_SITEMAPS_TO_FETCH = 8   # Max child sub-sitemaps to fetch from an index (bounds runtime)
 
 
 class SitemapEntry:
@@ -65,6 +66,10 @@ class SitemapParseResult:
         entries: List[SitemapEntry],
         has_lastmod: bool,
         error: Optional[str] = None,
+        has_syntax_errors: bool = False,
+        parse_errors: Optional[List[str]] = None,
+        sub_sitemaps_attempted: int = 0,
+        sub_sitemaps_failed: int = 0,
     ):
         self.sitemap_url = sitemap_url
         self.http_status = http_status
@@ -72,6 +77,10 @@ class SitemapParseResult:
         self.entries = entries
         self.has_lastmod = has_lastmod
         self.error = error
+        self.has_syntax_errors = has_syntax_errors
+        self.parse_errors = parse_errors or []
+        self.sub_sitemaps_attempted = sub_sitemaps_attempted
+        self.sub_sitemaps_failed = sub_sitemaps_failed
 
     def get_urls(self) -> List[str]:
         return [e.url for e in self.entries]
@@ -93,6 +102,9 @@ class SitemapParser:
 
     def __init__(self, http_client: Optional[SafeHTTPClient] = None):
         self.http_client = http_client or SafeHTTPClient()
+        self._current_parse_errors: List[str] = []
+        self._sub_sitemaps_attempted: int = 0
+        self._sub_sitemaps_failed: int = 0
 
     def fetch_and_parse(
         self,
@@ -143,16 +155,26 @@ class SitemapParser:
                 error=resp.error,
             )
 
+        self._current_parse_errors = []
+        self._sub_sitemaps_attempted = 0
+        self._sub_sitemaps_failed = 0
         entries = self._parse_xml(resp.body, root_url, sitemap_url, depth=0)
         has_lastmod = any(e.lastmod for e in entries)
+        has_syntax_errors = len(self._current_parse_errors) > 0
+        err_msg = "; ".join(self._current_parse_errors) if has_syntax_errors else resp.error
 
-        logger.info(f"Sitemap parsed: {len(entries)} URLs found at {sitemap_url}")
+        logger.info(f"Sitemap parsed: {len(entries)} URLs found at {sitemap_url} (syntax errors: {len(self._current_parse_errors)}, sub-sitemaps: {self._sub_sitemaps_attempted}, sub-failures: {self._sub_sitemaps_failed})")
         return SitemapParseResult(
             sitemap_url=sitemap_url,
             http_status=resp.status_code,
             is_accessible=True,
             entries=entries[:MAX_SITEMAP_URLS],
             has_lastmod=has_lastmod,
+            has_syntax_errors=has_syntax_errors,
+            parse_errors=list(self._current_parse_errors),
+            sub_sitemaps_attempted=self._sub_sitemaps_attempted,
+            sub_sitemaps_failed=self._sub_sitemaps_failed,
+            error=err_msg,
         )
 
     def _parse_xml(
@@ -166,7 +188,9 @@ class SitemapParser:
         try:
             root = ET.fromstring(xml_content.strip())
         except ET.ParseError as e:
-            logger.warning(f"Malformed sitemap XML at {current_url}: {e}")
+            err_msg = f"XML syntax error at {current_url}: {e}"
+            logger.warning(err_msg)
+            self._current_parse_errors.append(err_msg)
             return []
 
         # Strip namespace prefix for tag comparison
@@ -235,10 +259,23 @@ class SitemapParser:
             if not loc or not is_valid_url(loc):
                 continue
 
+            if self._sub_sitemaps_attempted >= MAX_SUB_SITEMAPS_TO_FETCH:
+                logger.info(f"Sub-sitemap fetch budget reached ({MAX_SUB_SITEMAPS_TO_FETCH}). Stopping sitemap index traversal.")
+                break
+
+            self._sub_sitemaps_attempted += 1
+            prev_err_count = len(self._current_parse_errors)
             resp = self.http_client.fetch(loc)
             if resp.is_success and resp.body.strip():
                 child_entries = self._parse_xml(resp.body, root_url, loc, depth + 1)
                 all_entries.extend(child_entries)
+                if len(self._current_parse_errors) > prev_err_count or len(child_entries) == 0:
+                    self._sub_sitemaps_failed += 1
+            else:
+                self._sub_sitemaps_failed += 1
+                err_msg = f"Failed fetching sub-sitemap {loc}: HTTP {resp.status_code} ({resp.error or 'Failed'})"
+                logger.warning(err_msg)
+                self._current_parse_errors.append(err_msg)
 
             if len(all_entries) >= MAX_SITEMAP_URLS:
                 break

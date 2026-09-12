@@ -25,14 +25,14 @@ def _load_env_if_present(filepath: str = ".env") -> None:
     """Loads environment variables from .env file if it exists."""
     if os.path.exists(filepath):
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
+            with open(filepath, "r", encoding="utf-8-sig") as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#") and "=" in line:
                         k, v = line.split("=", 1)
-                        k = k.strip()
+                        k = k.lstrip("\ufeff").strip()
                         v = v.strip().strip("'\"")
-                        if k and k not in os.environ:
+                        if k and (k not in os.environ or not os.environ[k]):
                             os.environ[k] = v
         except Exception as e:
             logger.debug(f"Failed to load .env file: {e}")
@@ -45,12 +45,14 @@ _load_env_if_present()
 class GeminiClient:
     """
     Client for Google Gemini REST API.
-    Uses gemini-1.5-flash (primary) and gemini-1.5-flash-8b (fallback) —
-    both broadly available across free and paid API tiers.
+    Primary and fallback models are resolved from GEMINI_MODEL / GEMINI_FALLBACK_MODEL
+    environment variables, defaulting to DEFAULT_MODEL and FALLBACK_MODEL class constants.
+    Both constants are overridable at runtime to stay compatible with new Gemini model
+    releases without code changes.
     """
 
-    DEFAULT_MODEL = "gemini-2.5-flash"
-    FALLBACK_MODEL = "gemini-2.5-flash-lite"
+    DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+    FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
     def __init__(
@@ -66,6 +68,7 @@ class GeminiClient:
             or ""
         ).strip()
         self.model = model
+        self.fallback_model = self.FALLBACK_MODEL
         self.timeout_seconds = timeout_seconds
 
     def is_available(self) -> bool:
@@ -312,30 +315,36 @@ Explain clearly:
 
 Keep tone professional, analytical, authoritative. Return plain text without JSON.
 """
-        endpoint = f"{self.BASE_URL}/{self.model}:generateContent"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.3}
-        }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            endpoint,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.api_key
-            },
-            method="POST"
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as response:
-                body = response.read().decode("utf-8")
-                res_json = json.loads(body)
-                candidates = res_json.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        return parts[0].get("text", "").strip()
-        except Exception as e:
-            logger.debug(f"Executive synthesis generation skipped: {e}")
+        models_to_try = [self.model]
+        if self.fallback_model and self.fallback_model != self.model:
+            models_to_try.append(self.fallback_model)
+
+        for m in models_to_try:
+            endpoint = f"{self.BASE_URL}/{m}:generateContent"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.3}
+            }
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                endpoint,
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.api_key
+                },
+                method="POST"
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout_seconds) as response:
+                    body = response.read().decode("utf-8")
+                    res_json = json.loads(body)
+                    candidates = res_json.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        for p in parts:
+                            if "text" in p and p["text"].strip():
+                                return p["text"].strip()
+            except Exception as e:
+                logger.warning(f"Executive synthesis failed on model {m}: {self._sanitize(str(e))}")
         return None
