@@ -9,6 +9,23 @@
 
 ---
 
+## Quick Start
+
+```bash
+pip install -r requirements.txt
+
+# Run an audit — prints a formatted summary to the terminal
+python run_audit.py --url https://example.com --summary
+
+# With Gemini LLM reasoning (optional — set key in .env or pass via flag)
+python run_audit.py --url https://example.com --summary --gemini-api-key "YOUR_KEY"
+
+# Export JSON report
+python run_audit.py --url https://example.com --output report.json
+```
+
+No API key required. Without `GEMINI_API_KEY` the audit runs in **fully deterministic, evidence-only mode** — this is a normal supported mode, not a degraded fallback.
+
 ## What This Is
 
 Point it at any website URL and it automatically audits two things:
