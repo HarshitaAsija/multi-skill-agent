@@ -1250,12 +1250,105 @@ class MarketIntelligenceEngine:
         return list(set(types))
 
     def _infer_brand_name(self, root_url: str, page_data_map: Dict[str, Any]) -> str:
-        for pdata in page_data_map.values():
-            if getattr(pdata, "page_title_brand", None):
-                return pdata.page_title_brand
+        """
+        Infers the canonical brand name from page metadata, structured data, or domain.
+        Robustly handles:
+        - Brand-first titles: "Spotify - Web Player: Music for everyone"
+        - Brand-last titles: "Home | Slack"
+        - OpenGraph og:site_name metadata
+        - Schema.org Organization / WebSite / Brand name
+        - Clean domain token fallback
+        """
+        # 1. Extract domain token for matching and fallback
+        domain_token = ""
+        try:
+            netloc = urlparse(root_url).netloc.lower().split(":")[0]
+            parts = netloc.split(".")
+            # Strip common subdomains: www, open, app, web, m, mobile, api
+            while len(parts) > 2 and parts[0] in {"www", "open", "app", "web", "m", "mobile", "api"}:
+                parts = parts[1:]
+            two_part_tlds = {"co", "com", "org", "net", "gov", "edu", "ac"}
+            if len(parts) >= 3 and parts[-2] in two_part_tlds:
+                domain_token = parts[-3]
+            elif len(parts) >= 2:
+                domain_token = parts[-2]
+            elif parts:
+                domain_token = parts[0]
+        except Exception:
+            pass
 
-        netloc = urlparse(root_url).netloc.lower()
-        parts = netloc.split(".")
-        if len(parts) >= 2:
-            return parts[-2].capitalize()
+        # 2. Check og:site_name in OpenGraph metadata (very reliable when present)
+        for pdata in page_data_map.values():
+            og = getattr(pdata, "open_graph", {}) or {}
+            site_name = og.get("og:site_name") or og.get("site_name")
+            if site_name and isinstance(site_name, str):
+                clean_name = site_name.strip()
+                if 1 < len(clean_name) <= 50 and clean_name.lower() not in {"home", "welcome", "index", "website"}:
+                    return clean_name
+
+        # 3. Check Schema.org JSON-LD blocks for Organization / WebSite name
+        for pdata in page_data_map.values():
+            blocks = getattr(pdata, "json_ld_blocks", []) or []
+            for block in blocks:
+                if isinstance(block, dict):
+                    stype = block.get("@type", "")
+                    types = stype if isinstance(stype, list) else [stype]
+                    if any(t in {"Organization", "Corporation", "Brand", "WebSite", "LocalBusiness"} for t in types):
+                        org_name = block.get("name") or block.get("legalName")
+                        if org_name and isinstance(org_name, str):
+                            clean_org = org_name.strip()
+                            if 1 < len(clean_org) <= 50 and clean_org.lower() not in {"home", "welcome", "index", "website"}:
+                                return clean_org
+
+        # 4. Check page titles for brand name (handling both brand-first and brand-last conventions)
+        for pdata in page_data_map.values():
+            title = getattr(pdata, "title", None)
+            if not title or not isinstance(title, str):
+                continue
+            title = title.strip()
+            for sep in (" | ", " - ", " — ", " · "):
+                if sep in title:
+                    segments = [s.strip() for s in title.split(sep) if s.strip()]
+                    if len(segments) >= 2:
+                        first_seg = segments[0]
+                        last_seg = segments[-1]
+
+                        # If one segment is an exact match to domain token, choose it immediately
+                        if domain_token:
+                            first_lower = first_seg.lower()
+                            last_lower = last_seg.lower()
+                            if last_lower == domain_token:
+                                return last_seg
+                            if first_lower == domain_token:
+                                return first_seg
+
+                            first_has = domain_token in first_lower.split()
+                            last_has = domain_token in last_lower.split()
+                            if first_has and not last_has:
+                                return first_seg
+                            if last_has and not first_has:
+                                return last_seg
+                            if first_has and last_has:
+                                return min([first_seg, last_seg], key=lambda s: len(s.split()))
+
+                        # Prefer the shorter segment between first and last (taglines are longer)
+                        shorter = min([first_seg, last_seg], key=lambda s: len(s.split()))
+                        if 1 < len(shorter) <= 30 and len(shorter.split()) <= 4:
+                            return shorter
+                    break
+
+        # 5. Check page_title_brand attribute from page_analyser (only if concise)
+        for pdata in page_data_map.values():
+            brand_suffix = getattr(pdata, "page_title_brand", None)
+            if brand_suffix and isinstance(brand_suffix, str):
+                clean_suffix = brand_suffix.strip()
+                if 1 < len(clean_suffix) <= 30 and len(clean_suffix.split()) <= 3:
+                    return clean_suffix
+
+        # 6. Fallback to capitalized domain token
+        if domain_token:
+            if len(domain_token) <= 3:
+                return domain_token.upper()
+            return domain_token.capitalize()
+
         return "Your Brand"

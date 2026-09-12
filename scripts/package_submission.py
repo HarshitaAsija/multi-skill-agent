@@ -60,29 +60,32 @@ def step_verify_marketplace_config():
             raise ValueError(f"marketplace.json missing required field: {field}")
 
     entrypoint_name = data["entrypoint"]
-    entrypoints = [s for s in data["skills"] if s.get("is_entrypoint") is True]
+    entrypoints = [s for s in data["skills"] if s.get("entrypoint") is True or s.get("is_entrypoint") is True]
 
     if len(entrypoints) != 1:
         raise ValueError(f"marketplace.json must declare EXACTLY 1 entrypoint, found {len(entrypoints)}")
 
-    if entrypoints[0]["name"] != entrypoint_name:
+    ep_name = entrypoints[0].get("id") or entrypoints[0].get("name")
+    if ep_name != entrypoint_name:
         raise ValueError(
-            f"Declared entrypoint '{entrypoint_name}' does not match entrypoint skill '{entrypoints[0]['name']}'"
+            f"Declared entrypoint '{entrypoint_name}' does not match entrypoint skill '{ep_name}'"
         )
 
     for skill in data["skills"]:
+        skill_id = skill.get("id") or skill.get("name")
         path = ROOT_DIR / skill["path"]
-        if not path.exists():
+        skill_file = path / "SKILL.md" if path.is_dir() else path
+        if not skill_file.exists():
             raise FileNotFoundError(f"SKILL.md not found at declared path: {skill['path']}")
 
         # Verify YAML frontmatter
-        content = path.read_text(encoding="utf-8")
+        content = skill_file.read_text(encoding="utf-8")
         if not content.startswith("---"):
             raise ValueError(f"{skill['path']} missing opening YAML frontmatter '---'")
 
         match = re.search(r"^name:\s*([^\s]+)", content, re.MULTILINE)
-        if not match or match.group(1).strip() != skill["name"]:
-            raise ValueError(f"{skill['path']} YAML frontmatter name does not match skill name '{skill['name']}'")
+        if not match or match.group(1).strip() != skill_id:
+            raise ValueError(f"{skill['path']} YAML frontmatter name does not match skill name '{skill_id}'")
 
 
 def step_create_zip():
@@ -94,6 +97,7 @@ def step_create_zip():
         "shared",
         "skills",
         "tests",
+        "scripts",
     ]
 
     ignored_names = {
