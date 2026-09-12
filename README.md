@@ -97,8 +97,15 @@ Dedicated to temporal and brand consistency. Parses copyright year text in foote
 ### `engagement-audit`
 Checks on-site experience from both a human and an autonomous agent perspective. Looks for a clear above-the-fold value proposition in the hero section, proper `<label>` associations for all form inputs, specific CTA button text (flags generics like "Click Here" or "Submit"), breadcrumb navigation on deep pages, and `FAQPage`/`Speakable` JSON-LD which lets AI assistants surface direct answers from the site.
 
-### `audit-orchestrator`
-The coordinator. Collects raw findings from all three specialists, strips per-URL suffixes from finding IDs, merges duplicates across pages, applies severity-weighted deductions to produce the AI Readiness Score, and executes the Market Intelligence & Gemini reasoning pipeline.
+### `audit-orchestrator` (Sole Designated Entrypoint)
+The coordinator and declared entrypoint in `marketplace.json`. When an audit is triggered, it composes the specialist skills in a disciplined pipeline:
+1. **Validation & Gating:** Normalizes the target URL, checks host reachability, and evaluates `robots.txt` AI scraper allowances.
+2. **Crawl & Structural Extraction:** Invokes `crawl-render-audit` to perform template-bucket BFS crawling and extract DOM, metadata, heading hierarchies, and Schema.org JSON-LD blocks.
+3. **Temporal & Brand Analysis:** Feeds crawled page models into `freshness-corroboration` to detect copyright decay, timestamp staleness, and brand suffix drift across subpages.
+4. **On-Site Friction Analysis:** Feeds page models into `engagement-audit` to inspect above-the-fold value propositions, form `<label>` accessibility, and answer-engine schema (`FAQPage`/`Speakable`).
+5. **Deduplication & Calibration:** Collects raw findings across all skills, deduplicates across URLs, calibrates severities, and computes the 0–100 AI Readiness Score.
+6. **AI Intelligence & Synthesis:** Runs the Market Intelligence Engine for high-intent question gap analysis, and invokes Google Gemini for executive synthesis and tailored proactive recommendations.
+7. **Report Emission:** Validates the compiled schema and outputs structured JSON and optional Markdown reports.
 
 ---
 
